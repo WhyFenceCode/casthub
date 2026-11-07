@@ -101,8 +101,12 @@ grep -n 'casthub' "$pam"
 restorecon -R /usr/share/sddm/themes/casthub /usr/share/casthub /usr/libexec/casthub /usr/share/fonts/casthub /etc/sddm.conf.d /var/lib/casthub 2>/dev/null || true
 
 step "Done"
+if [ "$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null)" = /usr/lib/systemd/system/sddm.service ]; then
+  echo "Installed. SDDM is the active login screen; changes show at the next login screen."
+else
+  echo "Installed. Nothing has switched yet: the current login screen is unchanged."
+fi
 cat <<EOF
-Installed. Nothing has switched yet: the current login screen is unchanged.
 
 Preview the real theme (as your normal user, not root):
   sddm-greeter-qt6 --test-mode --theme $theme
