@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the Display-mode screens off-screen (idle, connecting, streaming+busy, PIN page).
+"""Render the Display-mode screens off-screen (idle, connecting, streaming+busy, leave page).
 
     python3 tools/preview_display.py [--size 1080x633] [--scheme light|dark]
 
@@ -31,7 +31,7 @@ FAKE = {
 }
 QML = {
     "screen": ROOT / "casthub" / "ui" / "qml" / "DisplayScreen.qml",
-    "pin": ROOT / "casthub" / "switcher" / "qml" / "PinPage.qml",
+    "leave": ROOT / "casthub" / "switcher" / "qml" / "LeavePage.qml",
 }
 
 
@@ -60,7 +60,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", default="1080x633")
     ap.add_argument("--scheme", default="light", choices=["light", "dark"])
-    ap.add_argument("--only", help="screen name to render (idle, connecting, busy, pin, pin-error, pin-menu)")
+    ap.add_argument("--only", help="screen name to render (idle, connecting, busy, leave)")
     a = ap.parse_args()
     w, h = (int(v) for v in a.size.split("x"))
     app = QGuiApplication(sys.argv)
@@ -75,14 +75,10 @@ def main() -> int:
         "connecting": ("screen", {"screenState": "connecting", "deviceName": "Pixel Phone"}),
         "busy": ("screen", {"screenState": "streaming", "deviceName": "Pixel Phone",
                             "busyText": "Laptop tried to connect · Brand-1 is in use"}),
-        "pin": ("pin", {"entered": 2}),
-        "pin-error": ("pin", {"entered": 0, "error": "Wrong PIN · 2 tries left"}),
-        "pin-menu": ("pin", {"unlocked": True, "selected": 0}),
+        "leave": ("leave", {"selected": 0}),
     }
     for name, (kind, props) in shots.items():
         if a.only and name != a.only:
-            continue
-        if kind == "pin" and not QML["pin"].exists():
             continue
         render(app, QML[kind], (w, h), {**base, **props}, out / f"display-{name}-{a.scheme}-{w}x{h}.png")
     return 0

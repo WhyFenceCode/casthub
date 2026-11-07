@@ -50,20 +50,6 @@ class TestPin(unittest.TestCase):
         with self.assertRaises(ValueError):
             pin.hash_pin("12a4")
 
-    def test_guard_lockout(self):
-        from casthub.ui.app import MAX_TRIES, PinGuard
-        now = [100.0]
-        g = PinGuard(pin.hash_pin("2468"), clock=lambda: now[0])
-        for i in range(MAX_TRIES - 1):
-            ok, msg = g.check("0000")
-            self.assertFalse(ok)
-            self.assertIn(f"{MAX_TRIES - 1 - i}", msg)
-        ok, msg = g.check("0000")
-        self.assertIn("Too many", msg)
-        self.assertFalse(g.check("2468")[0])        # locked even with the right PIN
-        now[0] += 61
-        self.assertTrue(g.check("2468")[0])
-
     def test_set_pin_hash_in_toml(self):
         text = '[brand]\nname_prefix = "Brand"\n\n[switcher]\npin = "<placeholder>"\n\n[display]\ntheme = "auto"\n'
         out = set_pin_hash(text, "scrypt$X")
@@ -86,14 +72,12 @@ class TestApp(unittest.TestCase):
         os.environ["XDG_RUNTIME_DIR"] = tmp
         os.environ.pop("SWAYSOCK", None)
         qapp = QGuiApplication.instance() or QGuiApplication([])
-        cfg = config.parse({"brand": {"name_prefix": "Brand"}, "display": {"location": "Springfield", "theme": "light"},
-                            "switcher": {"pin_hash": pin.hash_pin("2468")}})
+        cfg = config.parse({"brand": {"name_prefix": "Brand"}, "display": {"location": "Springfield", "theme": "light"}})
         ui = uiapp.DisplayUI(qapp, cfg)
         self.assertEqual(len(ui.views), len(qapp.screens()))
         out_name, view = next(iter(ui.views.items()))
         root = view.rootObject()
         self.assertEqual(root.property("receiverName"), "Brand-1")
-        self.assertTrue(root.property("pinRequired"))
 
         replies = []
 
@@ -103,7 +87,7 @@ class TestApp(unittest.TestCase):
             s.connect(os.path.join(tmp, "casthub-ui.sock"))
             f = s.makefile("rwb")
             for m in ({"cmd": "state", "output": out_name, "state": "connecting", "device": "Phone"},
-                      {"cmd": "busy", "output": out_name, "text": "in use"}, {"cmd": "nope"}, {"cmd": "pin"}):
+                      {"cmd": "busy", "output": out_name, "text": "in use"}, {"cmd": "nope"}, {"cmd": "leave"}):
                 f.write(json.dumps(m).encode() + b"\n")
                 f.flush()
                 replies.append(json.loads(f.readline()))
@@ -121,34 +105,25 @@ class TestApp(unittest.TestCase):
         self.assertEqual(root.property("screenState"), "connecting")
         self.assertEqual(root.property("deviceName"), "Phone")
         self.assertEqual(root.property("busyText"), "in use")
-        self.assertTrue(root.property("pinOpen"))
+        self.assertTrue(root.property("leaveOpen"))
 
-        # Type a wrong PIN, then the right one, into the real PIN page.
-        from PySide6.QtCore import QDateTime, Qt
+        # No PIN: the page opens on the choices; arrows move, Esc closes it.
+        from PySide6.QtCore import Qt
         from PySide6.QtTest import QTest
 
-        loader_item = None
-        for child in root.findChildren(type(root)):
-            if child.property("unlocked") is not None and child.property("pinRequired") is not None and child is not root:
-                loader_item = child
-        self.assertIsNotNone(loader_item, "PIN page not loaded")
-
-        def type_pin(digits):
-            for d in digits:
-                QTest.keyClick(view, d)
-            QTest.keyClick(view, Qt.Key.Key_Return)
-            end = QDateTime.currentMSecsSinceEpoch() + 600
-            while QDateTime.currentMSecsSinceEpoch() < end:
-                qapp.processEvents()
-
+        page = next(c for c in root.findChildren(type(root)) if c is not root and c.property("selected") is not None)
         view.show()
         view.requestActivate()
-        loader_item.forceActiveFocus()
-        type_pin("1111")
-        self.assertFalse(loader_item.property("unlocked"))
-        self.assertIn("Wrong PIN", loader_item.property("error"))
-        type_pin("2468")
-        self.assertTrue(loader_item.property("unlocked"))
+        page.forceActiveFocus()
+        QTest.keyClick(view, Qt.Key.Key_Down)
+        self.assertEqual(page.property("selected"), 1)
+        chosen = []
+        root.leaveChosen.connect(chosen.append)
+        ui.on_action = lambda r, a: chosen.append(("ran", a))   # don't actually reboot the test machine
+        QTest.keyClick(view, Qt.Key.Key_Return)
+        self.assertIn("reboot", chosen)
+        QTest.keyClick(view, Qt.Key.Key_Escape)
+        self.assertFalse(root.property("leaveOpen"))
         for v in ui.views.values():
             v.close()
 

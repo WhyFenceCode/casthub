@@ -1,4 +1,4 @@
-"""casthub-pin: set the Display-mode PIN. Run by the owner in a terminal (as root):
+"""casthub-pin: set the switcher PIN for the LAN page (SPEC D10). Run by the owner in a terminal (as root):
 
     sudo /usr/libexec/casthub/casthub-pin
 
@@ -55,7 +55,7 @@ def main() -> int:
     if os.geteuid() != 0:
         print("run as root: sudo /usr/libexec/casthub/casthub-pin", file=sys.stderr)
         return 1
-    pin = getpass.getpass("New Display PIN (4-8 digits): ")
+    pin = getpass.getpass("New switcher PIN (4-8 digits): ")
     if not valid_pin(pin):
         print("PIN must be 4 to 8 digits", file=sys.stderr)
         return 1
@@ -70,7 +70,7 @@ def main() -> int:
     os.chown(tmp, 0, gid)
     os.chmod(tmp, 0o640)
     os.replace(tmp, CONFIG)
-    print(f"PIN set (hash only) in {CONFIG}. It applies the next time Display mode starts.")
+    print(f"PIN set (hash only) in {CONFIG}. Used by the LAN page.")
     return 0
 
 

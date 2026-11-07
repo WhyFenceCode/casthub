@@ -1,14 +1,15 @@
-"""Display-mode UI: one full-screen DisplayScreen per output, plus the PIN page.
+"""Display-mode UI: one full-screen DisplayScreen per output, plus the leave page.
 
 Runs as the `casthub` user inside the Display Sway session (modes/display/sway.conf):
 
     python3 -m casthub.ui.app [--config /etc/casthub/casthub.toml]
 
 Control socket ($XDG_RUNTIME_DIR/casthub-ui.sock, JSON lines; only this user can reach it):
-    {"cmd": "pin"}                                        open the PIN page (Ctrl+Alt+Esc)
+    {"cmd": "leave"}                                      open the leave page (Ctrl+Alt+Esc)
     {"cmd": "state", "output": "eDP-1", "state": "connecting", "device": "<name>"}
     {"cmd": "busy", "output": "eDP-1", "text": "<message>"}  (empty text hides it)
-The receiver hub (M3/M6) drives state and busy; casthub-leave sends "pin".
+The receiver hub (M3/M6) drives state and busy; casthub-leave sends "leave".
+No PIN here: leaving only returns to the login screen (owner decision, SPEC D7).
 """
 
 from __future__ import annotations
@@ -19,7 +20,6 @@ import logging
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, QUrl
@@ -28,14 +28,12 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtQuick import QQuickView
 
 from casthub import config as cfgmod
-from casthub.switcher.pin import verify_pin
 from casthub.ui.qr import QrProvider
 
 log = logging.getLogger("casthub.ui")
 QML = Path(__file__).resolve().parent / "qml" / "DisplayScreen.qml"
 QR_FILE = Path("/run/casthub/hotspot-qr.txt")      # written by the hotspot service (root); holds the join code
 LEAVE = "/usr/libexec/casthub/casthub-leave"
-MAX_TRIES, LOCKOUT_S = 5, 60
 ACTIONS = {
     "leave": [LEAVE, "--now"],
     "reboot": ["systemctl", "reboot"],
@@ -43,37 +41,10 @@ ACTIONS = {
 }
 
 
-class PinGuard:
-    """Counts wrong PINs; after MAX_TRIES the page refuses input for LOCKOUT_S seconds."""
-
-    def __init__(self, pin_hash: str, clock=time.monotonic) -> None:
-        self.pin_hash, self.clock = pin_hash, clock
-        self.failures, self.locked_until = 0, 0.0
-
-    @property
-    def required(self) -> bool:
-        return bool(self.pin_hash)
-
-    def check(self, pin: str) -> tuple[bool, str]:
-        now = self.clock()
-        if now < self.locked_until:
-            return False, f"Locked · wait {int(self.locked_until - now) + 1} s"
-        if verify_pin(pin, self.pin_hash):
-            self.failures = 0
-            return True, ""
-        self.failures += 1
-        if self.failures >= MAX_TRIES:
-            self.failures, self.locked_until = 0, now + LOCKOUT_S
-            return False, f"Too many tries · wait {LOCKOUT_S} s"
-        left = MAX_TRIES - self.failures
-        return False, f"Wrong PIN · {left} {'try' if left == 1 else 'tries'} left"
-
-
 class DisplayUI(QObject):
     def __init__(self, app: QGuiApplication, cfg: cfgmod.Config) -> None:
         super().__init__()
         self.app, self.cfg = app, cfg
-        self.guard = PinGuard(cfg.pin_hash)
         self.views: dict[str, QQuickView] = {}
         self.qr = ""
         for s in app.screens():
@@ -112,13 +83,11 @@ class DisplayUI(QObject):
             "airplay": self.cfg.airplay,
             "theme": self.cfg.theme,
             "qrPayload": self.qr,
-            "pinRequired": self.guard.required,
         }
         for k, val in props.items():
             root.setProperty(k, val)
-        root.pinSubmitted.connect(lambda pin, r=root: self.on_pin(r, pin))
-        root.pinChosen.connect(lambda action, r=root: self.on_action(r, action))
-        root.pinCancelled.connect(lambda r=root: r.setProperty("pinOpen", False))
+        root.leaveChosen.connect(lambda action, r=root: self.on_action(r, action))
+        root.leaveCancelled.connect(lambda r=root: r.setProperty("leaveOpen", False))
         v.showFullScreen()
         self.views[screen.name()] = v
         # Sway puts new windows on the focused output; move each one to its own.
@@ -150,24 +119,16 @@ class DisplayUI(QObject):
             for r in self.roots():
                 r.setProperty("qrPayload", qr)
 
-    # ---- PIN page ---------------------------------------------------------------
-    def open_pin(self) -> None:
+    # ---- leave page -------------------------------------------------------------
+    def open_leave(self) -> None:
         """Open on the screen that has the pointer/keyboard focus, else the first one."""
         target = self.app.focusWindow() or next(iter(self.views.values()), None)
         for v in self.views.values():
             r = v.rootObject()
             if r:
-                r.setProperty("pinOpen", v is target)
+                r.setProperty("leaveOpen", v is target)
         if target:
             target.requestActivate()
-
-    def on_pin(self, root, pin: str) -> None:
-        # Give QML a frame to show "Checking…" before scrypt runs.
-        def check() -> None:
-            ok, msg = self.guard.check(pin)
-            log.info("pin %s", "accepted" if ok else "refused")
-            root.pinResult(ok, msg)
-        QTimer.singleShot(30, check)
 
     def on_action(self, root, action: str) -> None:
         cmd = ACTIONS.get(action)
@@ -177,7 +138,7 @@ class DisplayUI(QObject):
         r = subprocess.run(cmd, check=False, capture_output=True, text=True)
         if r.returncode != 0:
             log.error("%s failed: %s", action, r.stderr.strip())
-            root.setProperty("pinOpen", False)
+            root.setProperty("leaveOpen", False)
 
     # ---- control socket ---------------------------------------------------------
     def on_connection(self) -> None:
@@ -197,8 +158,8 @@ class DisplayUI(QObject):
 
     def handle(self, msg: dict) -> None:
         cmd = msg["cmd"]
-        if cmd == "pin":
-            self.open_pin()
+        if cmd == "leave":
+            self.open_leave()
         elif cmd in ("state", "busy"):
             v = self.views.get(msg["output"])
             if v is None:

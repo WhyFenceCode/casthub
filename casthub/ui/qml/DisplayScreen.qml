@@ -18,13 +18,10 @@ Rectangle {
     property string qrPayload: ""           // hotspot join code; empty = hotspot off (D13)
     property string theme: "auto"           // auto | light | dark
 
-    // ---- PIN page (Ctrl+Alt+Esc), drawn on top of this screen ------------------
-    property bool pinOpen: false
-    property bool pinRequired: true
-    signal pinSubmitted(string pin)
-    signal pinChosen(string action)
-    signal pinCancelled()
-    function pinResult(ok, message) { if (pinLoader.item) pinLoader.item.result(ok, message) }
+    // ---- leave page (Ctrl+Alt+Esc), drawn on top of this screen ----------------
+    property bool leaveOpen: false
+    signal leaveChosen(string action)
+    signal leaveCancelled()
 
     // ---- clock ----------------------------------------------------------------
     property var fixedNow: null             // preview harness only
@@ -207,24 +204,21 @@ Rectangle {
     }
 
     Loader {
-        id: pinLoader
+        id: leaveLoader
         anchors.fill: parent
-        active: root.pinOpen
+        active: root.leaveOpen
         focus: true
-        source: Qt.resolvedUrl("../../switcher/qml/PinPage.qml")
+        source: Qt.resolvedUrl("../../switcher/qml/LeavePage.qml")
         onLoaded: {
             item.receiverName = Qt.binding(function () { return root.receiverName })
             item.theme = Qt.binding(function () { return root.theme })
             item.fixedNow = root.fixedNow
-            item.pinRequired = root.pinRequired
-            item.unlocked = !root.pinRequired
             item.forceActiveFocus()
         }
         Connections {
-            target: pinLoader.item
-            function onSubmitted(pin) { root.pinSubmitted(pin) }
-            function onChosen(action) { root.pinChosen(action) }
-            function onCancelled() { root.pinCancelled() }
+            target: leaveLoader.item
+            function onChosen(action) { root.leaveChosen(action) }
+            function onCancelled() { root.leaveCancelled() }
         }
     }
 }

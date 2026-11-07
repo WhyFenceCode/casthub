@@ -9,16 +9,16 @@ Nov 7, 2026 · Torsten
 
 | # | Topic | Decision |
 |---|-------|----------|
-| D1 | Design source | `design/OS Embedded Device — Design Concepts.pdf` is the single set of design drawings. Screens it doesn't show (busy, PIN overlay, etc.) are designed in the same style. The five-separate-PDFs plan is dropped. |
+| D1 | Design source | `design/OS Embedded Device — Design Concepts.pdf` is the single set of design drawings. Screens it doesn't show (busy, leave page, etc.) are designed in the same style. The five-separate-PDFs plan is dropped. |
 | D2 | Brand values | Taken from the mockups; cross-checked against the brand page on the Torsten Young website (/en/brand). Accent `#7E76D0`, paper `#E6E6E6`, night `#161616`, ink `#0B0B0B`. Fonts: Bricolage Grotesque (display/clock), Instrument Sans (text), DM Mono (labels), Mrs Saint Delafield (signature only). |
 | D3 | Themes | The OS has a light and a dark theme (mockup pages alternate light/dark). The terminal is always dark. The boot splash is always dark. |
 | D4 | Boot splash | The "Torsten Young" signature writes itself the way it does on the website: each letter's outline is stroked over 0.55 s, letters start 0.2 s apart, each fill fades in 0.4 s later over 0.35 s while its stroke fades out, then the accent flourish draws last over 0.9 s (round caps). Glyphs come from Mrs Saint Delafield, converted to paths at build time; frames are pre-rendered for Plymouth. |
 | D5 | Modes | Three modes, not two: **Workstation** (desktop, sign in), **Display** (Cast Hub receiver, no sign-in), **Console** (maintenance shell, sign in, admin accounts only, sudo available). |
 | D6 | Login manager | **SDDM** with a custom QML theme. Fedora 45's Plasma Login Manager compiles its greeter into the binary and cannot be themed, so it is replaced. |
-| D7 | Switcher | The login screen *is* the mode switcher. In Display mode, Ctrl + Alt + Esc + PIN opens a small overlay that leaves display mode (back to the login screen) or restarts/shuts down. No separate switcher app elsewhere. |
+| D7 | Switcher | The login screen *is* the mode switcher. In Display mode, Ctrl + Alt + Esc opens a small page in the same style: return to the login screen, restart, or shut down. **No PIN** (owner, Nov 7): leaving only returns to the login screen, where Display is the only choice without a password. No separate switcher app elsewhere. |
 | D8 | Desktop | Follows the mockups (top bar with Console / Files / Desktop tabs, today panel, system meters, custom file views), not the "bottom dock" plan. Plasma remains the underlying engine where it helps; the visible shell is custom. |
 | D9 | Miracast | M2 connection tests are done (owner). We build our own Python Miracast receiver; lazycast is a reference only. |
-| D10 | LAN switch page | Protected by the switcher PIN. |
+| D10 | LAN switch page | Protected by the switcher PIN (set with `casthub-pin`, stored as a hash). This is the only place the PIN is used, because the page is reachable from the network. |
 | D11 | Repo | Public on GitHub. `docs/SPEC.pdf` is never committed (kept in `local/`); this Markdown file is the tracked spec. Commits are authored by the owner with Claude as co-author. |
 | D12 | Status colours | Slightly pastel success/warning/error. Shown as chips: ink text on the pastel. Where status must be *text* (Plasma), it is deepened just enough for 4.5:1. The terminal shows status the same way (ink on pastel). |
 | D13 | Display QR | The QR code on the Display idle screen joins the Cast Hub hotspot and is shown only when the hotspot is on. |
@@ -105,7 +105,7 @@ mockups. Done when a fresh user account sees the branded desktop with no manual 
 
 - One QML module with brand tokens (colours, type scale, spacing, radii, motion) and
   components: tile, button, PIN pad, toast, status chip, QR card.
-- Used by the login screen, the desktop shell, the Display idle and busy screens, and the PIN
+- Used by the login screen, the desktop shell, the Display idle and busy screens, and the leave
   overlay, so every surface looks like one product.
 - `brand/` holds the source values; a generator writes the QML token file, the Plasma colour
   scheme, the Plymouth theme and the SDDM theme config from them.
@@ -132,7 +132,7 @@ generated from it.
 | Boot splash | Plymouth theme (always dark) | `/usr/share/plymouth/themes/casthub/` |
 | Login screen | SDDM theme with tokens | `/usr/share/sddm/themes/casthub/` |
 | Desktop | Colour schemes, shell theme, wallpaper | per user / system |
-| Display screens, PIN overlay | `uikit/Tokens.qml` | bundled with `uikit/` |
+| Display screens, leave page | `uikit/Tokens.qml` | bundled with `uikit/` |
 
 To change the look: edit `tokens.toml`, run `brand/build.py`, then `tools/install-theme.sh`.
 
@@ -148,7 +148,7 @@ a smart TV.
 - **Busy rule:** one active stream per screen. A second sender gets a branded "busy" message,
   or replaces the first if `busy_policy = "replace"`.
 - **Escape:** Ctrl + Alt + Esc is bound in Sway itself, and apps can't inhibit compositor
-  shortcuts, so a fullscreen stream can't swallow it. It opens the PIN overlay (D7).
+  shortcuts, so a fullscreen stream can't swallow it. It opens the leave page (D7, no PIN).
 - **Fallbacks:** long-press in a screen corner (touchscreen only); Ctrl + Alt + F3 for a text
   console; a small PIN-protected web page on the LAN (D10).
 
@@ -240,7 +240,7 @@ casthub/
     media/                  # GStreamer pipelines, mirror_all tee
     airplay/                # UxPlay process manager
     ui/                     # idle / busy / connecting screens (QML)
-    switcher/               # PIN overlay (QML)
+    switcher/               # leave page (QML), LAN-page PIN hash
   uikit/                    # shared QML components + generated Tokens.qml
   greeter/                  # SDDM theme: the mode-picker login screen
   shell/                    # desktop shell
@@ -275,11 +275,11 @@ M1 (Fedora installed) and M2 (Miracast go/no-go connection tests) are done.
 | # | Milestone | Done when |
 |---|-----------|-----------|
 | M7 | Login screen and modes | SDDM theme with Workstation, Display and Console; Display starts with no password; Console only for admins; leaving a mode returns to the login screen |
-| M8 | Branding and graphics | Tokens extracted and confirmed; boot splash, login, desktop, Display screens and PIN overlay match the mockups; one colour change in `brand/tokens.toml` updates all of them after one rebuild |
+| M8 | Branding and graphics | Tokens extracted and confirmed; boot splash, login, desktop, Display screens and leave page match the mockups; one colour change in `brand/tokens.toml` updates all of them after one rebuild |
 | M3 | Repo skeleton + receiver | Privacy guardrails *(done)*; config loader, hub, MICE listener and RTSP handshake; one receiver on 7250 shows a Windows cast fullscreen |
 | M4 | Multi-port test | Two mDNS receivers (7250, 7251): Win + K lists both and a cast to 7251 plays; layout mode chosen from the result |
 | M5 | AirPlay | One UxPlay per screen; an iPhone mirrors to a named screen |
-| M6 | Kiosk session | Display mode boots to idle screens; busy rule works; Ctrl + Alt + Esc + PIN opens the overlay during a stream |
+| M6 | Kiosk session | Display mode boots to idle screens; busy rule works; Ctrl + Alt + Esc opens the leave page during a stream |
 | M9 | Desktop shell | The mockup desktop (top bar, Console / Files / Desktop, today panel, meters) installed for a fresh user with no manual setup |
 
 ## Constraints and open questions

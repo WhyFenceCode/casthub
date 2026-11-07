@@ -1,8 +1,8 @@
 #!/bin/bash
 # Ctrl+Alt+Esc in Display mode (bound in modes/display/sway.conf).
-# Asks the Display UI to open the PIN page (SPEC D7). With --now (the UI calls this after
-# the PIN), or if the UI isn't running, it leaves straight away: back to the login screen,
-# which still needs a password for everything except Display.
+# Asks the Display UI to open the leave page (SPEC D7: return to login / restart / shut
+# down, no PIN). With --now (the UI calls this), or if the UI isn't running, it leaves
+# straight away: back to the login screen.
 if [ "${1:-}" != --now ]; then
   sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/casthub-ui.sock"
   if python3 -I - "$sock" <<'PY'
@@ -10,11 +10,11 @@ import socket, sys
 s = socket.socket(socket.AF_UNIX)
 s.settimeout(2)
 s.connect(sys.argv[1])
-s.sendall(b'{"cmd": "pin"}\n')
+s.sendall(b'{"cmd": "leave"}\n')
 sys.exit(0 if b'"ok": true' in s.recv(256) else 1)
 PY
   then exit 0; fi
-  logger -t casthub-leave "display UI not answering; leaving without the PIN page"
+  logger -t casthub-leave "display UI not answering; leaving directly"
 fi
 logger -t casthub-leave "leaving display mode"
 systemctl --user stop casthub-display.target 2>/dev/null

@@ -97,8 +97,9 @@ joins the hotspot.
   `casthub/ui/` idle / connecting / streaming + busy toast, one full-screen window per output,
   hotspot QR only when the hotspot service has written its join code (D13); the UI never
   holds the Wi-Fi passphrase. `casthub/config.py` (validated TOML) arrives early from M3.
-- PIN page (`casthub/switcher/`): Ctrl+Alt+Esc → PIN dots → Return to login / Restart / Shut
-  down. scrypt hash only (`casthub-pin`, typed by the owner), 5 tries then 60 s lockout. If
-  the UI is not running, Ctrl+Alt+Esc still leaves (to the login screen, which needs a password).
+- Leave page (`casthub/switcher/`): Ctrl+Alt+Esc → Return to login / Restart / Shut down.
+  Owner decision: no PIN, since leaving only returns to the login screen (D7). If the UI is not
+  running, Ctrl+Alt+Esc still leaves. The PIN (scrypt hash, `casthub-pin`) is kept for the LAN
+  page only (D10).
 - Terminal colours now reference the colour tokens; test: one accent edit changes every
   generated surface and no QML hard-codes a brand colour.
