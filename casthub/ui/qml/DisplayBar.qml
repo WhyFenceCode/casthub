@@ -11,7 +11,7 @@ Item {
     property real margin: 30
     property real modeX: 376
     property string modeText: "Display mode"
-    property string receiverName: ""
+    property string dateText: ""
     property bool showLogout: false        // idle screen: a visible way out (owner request)
     signal logoutRequested()
     anchors.left: parent.left; anchors.right: parent.right
@@ -30,7 +30,7 @@ Item {
         spacing: 24 * bar.ux
         Label {
             u: bar.u; tok: bar.tok; textStyle: bar.tok.dlabel; color: bar.tok.muted
-            text: bar.receiverName
+            text: bar.dateText
         }
         Battery { u: bar.u * 1.2; tok: bar.tok; textStyle: bar.tok.dlabel; anchors.verticalCenter: parent.verticalCenter }
         Label {

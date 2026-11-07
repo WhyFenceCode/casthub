@@ -40,9 +40,10 @@ WFD_MAX_THROUGHPUT_MBPS = 200
 PRIMARY_DEVICE_TYPE = bytes.fromhex("00070050f2040001")
 
 
-def wfd_subelements(rtsp_port: int = 7236) -> bytes:
+def wfd_subelements(rtsp_port: int = 7236, available: bool = True) -> bytes:
     """WFD Device Information subelement, as wpa_supplicant's WFDIEs property expects (id, len, data)."""
-    info = struct.pack(">HHH", WFD_PRIMARY_SINK_AVAILABLE, rtsp_port, WFD_MAX_THROUGHPUT_MBPS)
+    flags = WFD_PRIMARY_SINK_AVAILABLE if available else WFD_PRIMARY_SINK_AVAILABLE & ~0x0030
+    info = struct.pack(">HHH", flags, rtsp_port, WFD_MAX_THROUGHPUT_MBPS)
     return struct.pack(">BH", 0, len(info)) + info
 
 

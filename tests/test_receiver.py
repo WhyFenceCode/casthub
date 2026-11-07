@@ -277,6 +277,8 @@ class TestDiscovery(unittest.TestCase):
         sub = p2p.wfd_subelements(7236)
         self.assertEqual(sub.hex(), "000006" "0011" "1c44" "00c8")
         self.assertEqual(p2p.parse_wfd_rtsp_port(sub), 7236)
+        # Outside Display mode: still a sink, but no session available.
+        self.assertEqual(p2p.wfd_subelements(7236, available=False)[3:5].hex(), "0001")
 
     def test_mice_vendor_extension(self):
         ie = p2p.wsc_ie(p2p.mice_vendor_extension("receiver-host"))

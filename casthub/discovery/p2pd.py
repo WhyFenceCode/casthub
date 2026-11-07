@@ -64,6 +64,7 @@ class P2PDaemon:
         self.peers: dict[str, int] = {}    # peer path → RTSP port from its WFD IE
         self.announced: set[str] = set()
         self.pin = ""
+        self.advertising = False
 
     # ---- D-Bus helpers -------------------------------------------------------------
     async def call(self, path: str, iface: str, member: str, sig: str = "", body: list | None = None, dest: str = WPAS):
@@ -96,7 +97,9 @@ class P2PDaemon:
         self.bus.add_message_handler(self.on_signal)
         await self.call("/org/freedesktop/DBus", "org.freedesktop.DBus", "AddMatch", "s",
                         [f"type='signal',sender='{WPAS}'"], dest="org.freedesktop.DBus")
-        await self.advertise()
+        # Silent until a hub (Display mode) connects and asks: Cast Hub is only a cast
+        # target while Display mode is on screen.
+        await self.unadvertise()
 
     async def advertise(self) -> None:
         host = socket.gethostname().split(".")[0]
@@ -114,7 +117,23 @@ class P2PDaemon:
             with contextlib.suppress(RuntimeError):
                 await self.call(self.dev, IFACE, "VendorElemRem", "iay", [frame, old_ie])
         await self.listen()
+        self.advertising = True
         log.info("advertising %r (MS-MICE host name from this machine)", self.name)
+
+    async def unadvertise(self) -> None:
+        """Stop answering P2P discovery and drop the Miracast IEs."""
+        with contextlib.suppress(RuntimeError):
+            await self.call(self.dev, P2PDEV, "ExtendedListen", "a{sv}", [{}])     # no period = off
+        with contextlib.suppress(RuntimeError):
+            await self.call(self.dev, P2PDEV, "StopFind")
+        conf = {"DeviceName": Variant("s", socket.gethostname().split(".")[0][:32]),
+                "VendorExtension": Variant("aay", [])}
+        with contextlib.suppress(RuntimeError):
+            await self.set(self.dev, P2PDEV, "P2PDeviceConfig", "a{sv}", conf)
+        with contextlib.suppress(RuntimeError):     # sink, session *not* available
+            await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements(available=False))
+        self.advertising = False
+        log.info("not advertising (no Display mode hub connected)")
 
     async def listen(self) -> None:
         # Listen 500 ms every 500 ms: discoverable without blocking the Wi-Fi connection.
@@ -233,7 +252,8 @@ class P2PDaemon:
         if self.dnsmasq:
             self.dnsmasq.terminate()
             self.dnsmasq = None
-        await self.listen()
+        if self.advertising:
+            await self.listen()
 
     # ---- hub socket ----------------------------------------------------------------------
     def broadcast(self, event: dict) -> None:
@@ -274,6 +294,8 @@ class P2PDaemon:
         finally:
             self.clients.discard(writer)
             writer.close()
+            if not self.clients and self.advertising:
+                await self.unadvertise()
 
     async def serve(self) -> None:
         RUN.mkdir(exist_ok=True)

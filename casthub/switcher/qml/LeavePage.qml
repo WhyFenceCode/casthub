@@ -64,7 +64,7 @@ Rectangle {
         u: root.u; ux: root.ux; uy: root.uy; tok: t
         margin: root.margin; modeX: root.colX(4)
         modeText: "Leave display mode"
-        receiverName: root.receiverName
+        dateText: Qt.formatDate(root.clockNow, "dddd d MMMM")
     }
 
     Label {

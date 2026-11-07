@@ -1,3 +1,4 @@
 #!/bin/sh
 # Start the receiver hub (casthub/hub), installed under /usr/lib/casthub.
-exec python3 -I -c 'import sys; sys.path.insert(0, "/usr/lib/casthub"); from casthub.hub.__main__ import main; raise SystemExit(main())' "$@"
+# Sway's exec output goes nowhere, so the log goes to the journal: journalctl -t casthub-hub
+exec systemd-cat -t casthub-hub python3 -I -c 'import sys; sys.path.insert(0, "/usr/lib/casthub"); from casthub.hub.__main__ import main; raise SystemExit(main())' "$@"

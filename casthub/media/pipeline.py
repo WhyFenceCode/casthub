@@ -101,10 +101,15 @@ class Pipeline:
         self.pipe.get_by_name("vsink").get_static_pad("sink").add_probe(g.PadProbeType.BUFFER, probe)
         if self.pipe.set_state(g.State.PLAYING) == g.StateChangeReturn.FAILURE:
             why = "pipeline did not start"
-            msg = self.pipe.get_bus().pop_filtered(g.MessageType.ERROR)
-            if msg is not None:
-                e, dbg = msg.parse_error()
-                why = f"{why}: {msg.src.get_name()}: {e.message} ({dbg})"
+            bus = self.pipe.get_bus()
+            while (msg := bus.pop()) is not None:
+                if msg.type in (g.MessageType.ERROR, g.MessageType.WARNING):
+                    e, dbg = msg.parse_error() if msg.type == g.MessageType.ERROR else msg.parse_warning()
+                    why += f"; {msg.src.get_name()}: {e.message} ({dbg})"
+            for el in self.pipe.iterate_elements():
+                _, cur, pend = el.get_state(0)
+                if cur != g.State.PLAYING:
+                    why += f"; {el.get_name()} stuck in {cur.value_nick}"
             self.stop()
             raise RuntimeError(why)
         self._poll = asyncio.create_task(self._watch())

@@ -62,7 +62,7 @@ Rectangle {
         DisplayBar {
             u: root.u; ux: root.ux; uy: root.uy; tok: t
             margin: root.margin; modeX: root.colX(4)
-            receiverName: root.receiverName
+            dateText: root.days[root.clockNow.getDay()] + " " + root.clockNow.getDate() + " " + root.months[root.clockNow.getMonth()]
             showLogout: true
             onLogoutRequested: root.leaveOpen = true
         }
@@ -89,7 +89,7 @@ Rectangle {
             color: root.pinCode || root.screenState === "connecting" ? t.muted : t.fg
             text: root.pinCode ? "Type this PIN on your PC"
                   : root.screenState === "connecting" ? "Connecting…"
-                  : root.days[root.clockNow.getDay()] + " " + root.clockNow.getDate() + " " + root.months[root.clockNow.getMonth()]
+                  : root.receiverName      // the name to pick in Win + K / Screen Mirroring; the date is in the bar
         }
         Label {
             anchors.right: parent.right; anchors.rightMargin: root.margin
@@ -122,7 +122,7 @@ Rectangle {
             Label {
                 x: 17 * root.ux; anchors.verticalCenter: parent.top
                 u: root.u; tok: t; textStyle: t.dlabel
-                text: root.pinCode ? "Pairing" : root.screenState === "connecting" ? "Connecting" : "Waiting for a device"
+                text: root.pinCode ? "Pairing" : root.screenState === "connecting" ? "Connecting…" : "Waiting for a device"
             }
             Label {
                 y: 24 * root.uy - height / 2
