@@ -82,7 +82,16 @@ class P2PDaemon:
     async def start(self) -> None:
         self.bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
         wifi = wifi_interface(self.cfg.miracast_interface)
-        (self.dev,) = await self.call("/fi/w1/wpa_supplicant1", WPAS, "GetInterface", "s", [f"p2p-dev-{wifi}"])
+        # With NetworkManager, P2P runs on wpa_supplicant's hidden p2p-dev device, but D-Bus
+        # exposes its P2PDevice API on the Wi-Fi interface's own object.
+        for name in (f"p2p-dev-{wifi}", wifi):
+            try:
+                (self.dev,) = await self.call("/fi/w1/wpa_supplicant1", WPAS, "GetInterface", "s", [name])
+                break
+            except RuntimeError:
+                continue
+        else:
+            raise RuntimeError(f"wpa_supplicant does not manage {wifi}")
         self.bus.add_message_handler(self.on_signal)
         await self.call("/org/freedesktop/DBus", "org.freedesktop.DBus", "AddMatch", "s",
                         [f"type='signal',sender='{WPAS}'"], dest="org.freedesktop.DBus")
