@@ -18,36 +18,43 @@ gutter = 21.6
 
 [color]
 accent = "#7E76D0"
-success = "#5FA87A"   # GUESS
-warning = "#D2A84B"   # GUESS
-error = "#D0605E"     # GUESS
+# Status colours are pastel (owner decision). They are always used as chip/fill
+# colours with on_status text: pastel text on paper is unreadable (≈1.4:1), while
+# ink on these chips is 9.8–13:1. Pastel text is fine on dark surfaces (≥9:1).
+success = "#9DD3B0"
+warning = "#EDCF8E"
+error = "#F2A29D"
+on_status = "#0B0B0B"
 
 [color.light]
-bg = "#E6E6E6"        # paper
-fg = "#0B0B0B"        # ink
+bg = "#E6E6E6"        # paper (page background)
+surface = "#EDEDED"   # windows, panels (design pages 8, 10)
+fg = "#0B0B0B"        # ink; also window borders
 muted = "#555555"
-line = "#CBCBCB"
-well = "#D6D6D6"      # avatar / image wells
+line = "#CBCBCB"      # hairlines, grid
+well = "#D6D6D6"      # avatar / image wells, file tiles
 
 [color.dark]
 bg = "#161616"        # night
+surface = "#1C1C1C"   # windows, panels (design pages 6, 9, 11)
 fg = "#FFFFFF"
 muted = "#A0A0A0"
 line = "#2E2E2E"
-well = "#2A2A2A"      # GUESS: dark avatar well
+well = "#242424"      # file tiles (design page 11)
 
 [color.terminal]
-# The terminal is always dark, whatever the OS theme.
+# The terminal is always dark, whatever the OS theme (design page 7). ANSI colours
+# are not in the mockups: pastel, to match the status colours.
 bg = "#161616"
 fg = "#E6E6E6"
 muted = "#A0A0A0"
 black = "#0B0B0B"
-red = "#D0605E"       # GUESS (ANSI colours are not in the mockups)
-green = "#5FA87A"     # GUESS
-yellow = "#D2A84B"    # GUESS
+red = "#F2A29D"
+green = "#9DD3B0"
+yellow = "#EDCF8E"
 blue = "#7E76D0"      # accent
-magenta = "#A79FE6"   # GUESS: light accent
-cyan = "#7FB6C4"      # GUESS
+magenta = "#C2BBF0"
+cyan = "#9CCFD8"
 white = "#E6E6E6"
 
 [font]

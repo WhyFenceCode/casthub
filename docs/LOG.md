@@ -71,3 +71,19 @@ Fixes from that test:
 
 Owner confirmed after reboot: signature boot splash, light login screen following the user's
 setting, inline password errors, centred footer. M7 done.
+
+## M8: desktop theme (in progress), 2026-11-07
+
+Owner choices: pastel status colours; M8 themes Plasma (custom shell is M9); the Display QR
+joins the hotspot.
+- Status colours are pastels (`brand/tokens.toml`). They fail as text on paper, so they are
+  shown as chips with ink text; Plasma's status *text* colours are deepened only as far as
+  needed for 4.5:1 (`status_text()`, tested).
+- `uikit/`: the shared QML kit (tokens, labels, pills, chips, grid, wordmark). The greeter uses it;
+  Display screens and the M9 shell will too.
+- `shell/`: Plasma colour schemes and global themes `org.casthub.light` / `org.casthub.dark`
+  (no panel layout, so nobody's panels are reset), a login splash, and `brand/wallpaper.py`
+  (background + 12-column grid, built for the real screen).
+- `tools/install-theme.sh`: one installer for every themed surface. It sets system defaults in
+  `/etc/xdg`, so every user who never picked a global theme follows Cast Hub.
+- Fixed: `install-modes.sh` did not copy `uikit/` with the greeter (`tools/lib/greeter.sh`).

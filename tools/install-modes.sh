@@ -42,9 +42,9 @@ fc-cache -f /usr/share/fonts/casthub >/dev/null
 
 step "Login theme"
 theme=/usr/share/sddm/themes/casthub
-rm -rf "$theme"
-install -d "$theme"
-install -m644 "$repo"/greeter/*.qml "$repo"/greeter/metadata.desktop "$repo"/greeter/theme.conf "$theme/"
+# shellcheck source=lib/greeter.sh
+. "$repo/tools/lib/greeter.sh"
+install_greeter "$repo"
 admins=$(getent group wheel | cut -d: -f4)
 {
   echo "# Written by tools/install-modes.sh for this machine. Not in the repo."

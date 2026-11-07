@@ -19,6 +19,17 @@ lists only the three Cast Hub modes. Pick **Workstation** and sign in normally.
 `tools/install-modes.sh` saved the original as `/etc/pam.d/sddm.casthub-backup`:
 `sudo cp /etc/pam.d/sddm.casthub-backup /etc/pam.d/sddm`
 
+## Desktop theme (M8, `tools/install-theme.sh`)
+
+Back to Fedora's look for everyone who never picked a global theme:
+
+    sudo rm /etc/xdg/kdeglobals                      # did not exist before Cast Hub
+    sudo cp -a /etc/xdg/konsolerc.casthub-backup /etc/xdg/konsolerc
+
+Then log out and in. The installed files (`/usr/share/plasma/look-and-feel/org.casthub.*`,
+`/usr/share/color-schemes/CastHub*`, `/usr/share/wallpapers/CastHub`) are harmless left in
+place. One user only: System Settings → Global Theme → Fedora.
+
 ## Roll the whole system back to a snapshot
 
 Snapshots are made by `tools/snapshot.sh` before every system change, at the top

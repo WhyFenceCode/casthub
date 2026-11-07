@@ -2,6 +2,7 @@
 // Layout follows design/ pages 3–5, measured on the 1080×675 frame.
 // All sizes are frame units × u (u = screen height / 675); horizontal positions use the 12-column grid.
 import QtQuick
+import "uikit"
 
 Rectangle {
     id: root
@@ -164,25 +165,14 @@ Rectangle {
     Keys.onPressed: function (e) { root.handleKey(e) }
 
     // ---- background grid ---------------------------------------------------
-    Repeater {
-        model: t.gridColumns * 2
-        Rectangle {
-            required property int index
-            x: Math.round(root.colX(Math.floor(index / 2)) + (index % 2 ? root.col : 0))
-            width: root.hair
-            height: root.height
-            color: t.line
-            opacity: 0.4
-        }
-    }
+    GridLines { u: root.u; tok: t }
 
     // ---- top bar -----------------------------------------------------------
-    Row {
+    Wordmark {
         x: root.margin
         anchors.verticalCenter: topRule.top
         anchors.verticalCenterOffset: -24 * root.u
-        Label { text: root.cfg("Wordmark", "Torsten Young"); u: root.u; tok: t; textStyle: t.wordmark }
-        Label { text: "."; u: root.u; tok: t; textStyle: t.wordmark; color: t.accent }
+        text: root.cfg("Wordmark", "Torsten Young"); u: root.u; tok: t
     }
     Row {
         anchors.horizontalCenter: parent.horizontalCenter
@@ -291,10 +281,10 @@ Rectangle {
             }
             Label { y: 57 * root.u - height / 2; u: root.u; tok: t; textStyle: t.label; color: t.muted; text: "Password" }
             // Errors sit next to the field they're about.
-            Label {
+            Chip {
                 anchors.right: parent.right
                 y: 57 * root.u - height / 2
-                u: root.u; tok: t; textStyle: t.label; color: t.error
+                u: root.u; tok: t; kind: "error"
                 text: root.message
                 visible: root.message.length > 0
             }
@@ -342,9 +332,15 @@ Rectangle {
             }
             Label {
                 y: 84 * root.u - height / 2
-                u: root.u; tok: t; textStyle: t.label
-                color: root.message.length ? t.error : t.muted
-                text: root.message.length ? root.message : "Files and accounts stay locked"
+                visible: root.message.length === 0
+                u: root.u; tok: t; textStyle: t.label; color: t.muted
+                text: "Files and accounts stay locked"
+            }
+            Chip {
+                y: 84 * root.u - height / 2
+                visible: root.message.length > 0
+                u: root.u; tok: t; kind: "error"
+                text: root.message
             }
             Rectangle { y: 104 * root.u; width: parent.width; height: root.hair; color: t.line }
         }

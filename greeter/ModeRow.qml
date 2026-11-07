@@ -1,5 +1,6 @@
 // One row of the MODE list: number, title, subtitle, state square.
 import QtQuick
+import "uikit"
 
 Rectangle {
     id: row

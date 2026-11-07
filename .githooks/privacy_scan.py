@@ -363,9 +363,18 @@ def main(argv: list[str]) -> int:
             for sha in filter(None, git("rev-list", *rng).split()):
                 findings += scan_commit(sha, deny, allow)
     elif mode == "--paths":
-        for p in rest:
-            rel = os.path.relpath(p, repo)
-            findings += scan_blob(rel, Path(p).read_bytes(), deny, allow)
+        def walk(p: Path):
+            if p.is_symlink():                  # git stores a symlink as its target text
+                yield p, os.readlink(p).encode()
+            elif p.is_dir():
+                for child in sorted(p.iterdir()):
+                    yield from walk(child)
+            else:
+                yield p, p.read_bytes()
+
+        for arg in rest:
+            for p, data in walk(Path(arg)):
+                findings += scan_blob(os.path.relpath(p, repo), data, deny, allow)
     else:
         print(__doc__, file=sys.stderr)
         return 2

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Generate every themed surface from brand/tokens.toml.
 
-M7 scope: the QML token object used by the login screen, and the always-dark
-Konsole colour scheme for Console mode. M8 extends this (Plymouth, Plasma, uikit).
+Static outputs (checked in): the uikit token object, the always-dark Konsole scheme,
+the Plasma colour schemes and the light/dark look-and-feel packages. Outputs that depend
+on the screen size are built at install time by brand/splash.py and brand/wallpaper.py.
 
     python3 brand/build.py           # write generated files
     python3 brand/build.py --check   # exit 1 if generated files are stale
@@ -40,8 +41,8 @@ def qml_tokens(t: dict) -> str:
         f"    readonly property real gridGutter: {t['grid']['gutter']}",
         "",
     ]
-    for k in ("accent", "success", "warning", "error"):
-        lines.append(f'    readonly property color {k}: "{c[k]}"')
+    for k in ("accent", "success", "warning", "error", "on_status"):
+        lines.append(f'    readonly property color {k.replace("_s", "S")}: "{c[k]}"')
     for k in light:
         lines.append(f'    readonly property color {k}: dark ? "{dark[k]}" : "{light[k]}"')
     lines.append("")
@@ -91,10 +92,137 @@ def konsole_scheme(t: dict) -> str:
     return "\n".join(out)
 
 
+def contrast(a: str, b: str) -> float:
+    """WCAG contrast ratio between two hex colours."""
+    def lum(h: str) -> float:
+        def ch(c: int) -> float:
+            v = c / 255
+            return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+        h = h.lstrip("#")
+        r, g, b_ = (int(h[i : i + 2], 16) for i in (0, 2, 4))
+        return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b_)
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def status_text(t: dict, variant: str) -> dict[str, str]:
+    """Status colours for use as TEXT: the token colour, nudged toward the theme's text
+    colour only as far as needed to read at >= 4.5:1 on the window surface. On dark the
+    pastels pass as they are; on light they deepen toward ink."""
+    c = t["color"]
+    surface, fg = c[variant]["surface"], c[variant]["fg"]
+    out = {}
+    for k in ("success", "warning", "error", "accent"):
+        col, f = c[k], 0.0
+        while contrast(col, surface) < 4.5 and f < 1:
+            f += 0.05
+            col = mix(c[k], fg, f)
+        out[k] = col
+    return out
+
+
+def kde_colors(t: dict, variant: str) -> str:
+    """A Plasma colour scheme (.colors) for the light or dark theme."""
+    c = t["color"]
+    v = c[variant]
+    inv = c["dark" if variant == "light" else "light"]
+    st = status_text(t, variant)
+    name = "CastHub" + variant.capitalize()
+
+    def roles(bg: str, alt: str, fg: str, muted: str) -> list[str]:
+        return [
+            f"BackgroundAlternate={rgb(alt)}", f"BackgroundNormal={rgb(bg)}",
+            f"DecorationFocus={rgb(c['accent'])}", f"DecorationHover={rgb(c['accent'])}",
+            f"ForegroundActive={rgb(st['accent'])}", f"ForegroundInactive={rgb(muted)}",
+            f"ForegroundLink={rgb(st['accent'])}", f"ForegroundNegative={rgb(st['error'])}",
+            f"ForegroundNeutral={rgb(st['warning'])}", f"ForegroundNormal={rgb(fg)}",
+            f"ForegroundPositive={rgb(st['success'])}", f"ForegroundVisited={rgb(st['accent'])}",
+        ]
+
+    sections = {
+        "Colors:Window": roles(v["surface"], v["bg"], v["fg"], v["muted"]),
+        "Colors:View": roles(v["surface"], v["bg"], v["fg"], v["muted"]),
+        "Colors:Button": roles(v["surface"], v["well"], v["fg"], v["muted"]),
+        "Colors:Header": roles(v["surface"], v["bg"], v["fg"], v["muted"]),
+        "Colors:Header][Inactive": roles(v["surface"], v["bg"], v["muted"], v["muted"]),
+        # Selection = ink fill with paper text (design: selected tile / mode row)
+        "Colors:Selection": roles(v["fg"], v["fg"], v["bg"], v["line"]),
+        "Colors:Tooltip": roles(v["fg"], v["fg"], v["bg"], v["line"]),
+        "Colors:Complementary": roles(inv["surface"], inv["bg"], inv["fg"], inv["muted"]),
+    }
+    out = [f"# {HEADER}", "[General]", f"ColorScheme={name}", f"Name=Cast Hub {variant.capitalize()}", "shadeSortColumn=false", ""]
+    out += ["[KDE]", "contrast=4", ""]
+    out += ["[ColorEffects:Disabled]", "Color=" + rgb(v["muted"]), "ColorAmount=0", "ColorEffect=0",
+            "ContrastAmount=0.55", "ContrastEffect=1", "IntensityAmount=0.1", "IntensityEffect=2", ""]
+    out += ["[ColorEffects:Inactive]", "ChangeSelectionColor=false", "Enable=false", ""]
+    for sec, lines in sections.items():
+        out += [f"[{sec}]", *lines, ""]
+    out += [
+        "[WM]",
+        f"activeBackground={rgb(v['surface'])}", f"activeBlend={rgb(v['fg'])}", f"activeForeground={rgb(v['fg'])}",
+        f"inactiveBackground={rgb(v['surface'])}", f"inactiveBlend={rgb(v['muted'])}", f"inactiveForeground={rgb(v['muted'])}",
+        "",
+    ]
+    return "\n".join(out)
+
+
+def lnf_id(variant: str) -> str:
+    return f"org.casthub.{variant}"
+
+
+def lnf_metadata(t: dict, variant: str) -> str:
+    import json
+    meta = {
+        "KPackageStructure": "Plasma/LookAndFeel",
+        "KPlugin": {
+            "Authors": [{"Name": "Cast Hub"}],
+            "Description": f"Cast Hub, {variant} ({HEADER})",
+            "Id": lnf_id(variant),
+            "License": "GPLv2+",
+            "Name": f"Cast Hub {variant.capitalize()}",
+            "Website": "https://github.com/WhyFenceCode/casthub",
+        },
+        "Keywords": "Desktop;Workspace;Appearance;Look and Feel;",
+        "X-Plasma-APIVersion": "2",
+    }
+    return json.dumps(meta, indent=4) + "\n"
+
+
+def lnf_defaults(t: dict, variant: str) -> str:
+    """What applying the package changes. No [layouts]: panels and widgets are left alone."""
+    icons = "breeze-dark" if variant == "dark" else "breeze"
+    return "\n".join([
+        f"# {HEADER}",
+        "[kdeglobals][KDE]", "widgetStyle=Breeze", "",
+        "[kdeglobals][General]", f"ColorScheme=CastHub{variant.capitalize()}", "",
+        "[kdeglobals][Icons]", f"Theme={icons}", "",
+        "[plasmarc][Theme]", "name=default", "",
+        "[Wallpaper]", "Image=CastHub", "",
+        "[kcminputrc][Mouse]", "cursorTheme=breeze_cursors", "",
+        "[kwinrc][org.kde.kdecoration2]", "library=org.kde.breeze", "theme=Breeze", "",
+        "[ksplashrc][KSplash]", f"Theme={lnf_id(variant)}", "",
+    ])
+
+
+def lnf_splash(t: dict, variant: str) -> str:
+    src = (ROOT / "shell" / "ksplash" / "Splash.qml").read_text()
+    marker = "readonly property bool dark: false // @variant"
+    assert marker in src, "shell/ksplash/Splash.qml lost its @variant line"
+    return f"// {HEADER} (from shell/ksplash/Splash.qml)\n" + src.replace(
+        marker, f"readonly property bool dark: {str(variant == 'dark').lower()}")
+
+
 OUTPUTS = {
-    "greeter/Tokens.qml": qml_tokens,
+    "uikit/Tokens.qml": qml_tokens,
     "modes/console/CastHub.colorscheme": konsole_scheme,
+    "shell/colors/CastHubLight.colors": lambda t: kde_colors(t, "light"),
+    "shell/colors/CastHubDark.colors": lambda t: kde_colors(t, "dark"),
 }
+for _v in ("light", "dark"):
+    _d = f"shell/lookandfeel/{lnf_id(_v)}"
+    OUTPUTS[f"{_d}/metadata.json"] = lambda t, v=_v: lnf_metadata(t, v)
+    OUTPUTS[f"{_d}/contents/defaults"] = lambda t, v=_v: lnf_defaults(t, v)
+    OUTPUTS[f"{_d}/contents/splash/Splash.qml"] = lambda t, v=_v: lnf_splash(t, v)
 
 
 def main() -> int:

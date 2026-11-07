@@ -11,14 +11,16 @@ QtObject {
     readonly property real gridGutter: 21.6
 
     readonly property color accent: "#7E76D0"
-    readonly property color success: "#5FA87A"
-    readonly property color warning: "#D2A84B"
-    readonly property color error: "#D0605E"
+    readonly property color success: "#9DD3B0"
+    readonly property color warning: "#EDCF8E"
+    readonly property color error: "#F2A29D"
+    readonly property color onStatus: "#0B0B0B"
     readonly property color bg: dark ? "#161616" : "#E6E6E6"
+    readonly property color surface: dark ? "#1C1C1C" : "#EDEDED"
     readonly property color fg: dark ? "#FFFFFF" : "#0B0B0B"
     readonly property color muted: dark ? "#A0A0A0" : "#555555"
     readonly property color line: dark ? "#2E2E2E" : "#CBCBCB"
-    readonly property color well: dark ? "#2A2A2A" : "#D6D6D6"
+    readonly property color well: dark ? "#242424" : "#D6D6D6"
 
     readonly property string fontDisplay: "Bricolage Grotesque"
     readonly property string fontText: "Instrument Sans"
