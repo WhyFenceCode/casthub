@@ -245,3 +245,21 @@ class TestBattery(unittest.TestCase):
         qml = TestLockScreen.QML.read_text()
         self.assertIn("BatteryControlModel", qml)
         self.assertIn("sysfs: false", qml)
+
+
+class TestOneTopBar(unittest.TestCase):
+    """SPEC D23: login, lock, Display and leave screens share the bar's measurements."""
+
+    def test_display_bar_uses_main_frame(self):
+        bar = (ROOT / "casthub" / "ui" / "qml" / "DisplayBar.qml").read_text()
+        self.assertIn("23.5 * u", bar)
+        self.assertIn("y: 47 * bar.u", bar)
+        self.assertNotIn("dlabel", bar)
+        self.assertNotIn("1.32", bar)
+        for f in ("casthub/ui/qml/DisplayScreen.qml", "casthub/switcher/qml/LeavePage.qml"):
+            self.assertIn("t.gridMargin * fu", (ROOT / f).read_text(), f)
+
+    def test_flourish_is_one_arc(self):
+        pts = json.loads((ROOT / "brand" / "flourish.json").read_text())["points"]
+        xs = [p[0] for p in pts]
+        self.assertEqual(xs, sorted(xs))           # no loop back at the end

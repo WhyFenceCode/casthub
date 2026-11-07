@@ -185,7 +185,7 @@ Rectangle {
         text: root.cfg("Wordmark", "Torsten Young"); u: root.u; tok: t
     }
     Row {
-        anchors.horizontalCenter: parent.horizontalCenter
+        x: root.colX(4)                      // same place as on the Display and lock screens
         anchors.verticalCenter: topRule.top
         anchors.verticalCenterOffset: -24 * root.u
         spacing: 8 * root.u

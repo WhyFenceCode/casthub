@@ -1,0 +1,12 @@
+[Unit]
+Description=Cast Hub receivers (Miracast)
+Documentation=file:///usr/share/doc/casthub/SPEC.md
+# Stops together with Display mode (casthub-leave stops the target; so does logging out).
+PartOf=casthub-display.target
+After=casthub-display.target
+
+[Service]
+ExecStart=/usr/libexec/casthub/casthub-hub -v
+Restart=on-failure
+RestartSec=2
+SyslogIdentifier=casthub-hub

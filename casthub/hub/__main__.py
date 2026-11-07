@@ -148,6 +148,14 @@ async def amain(a: argparse.Namespace) -> int:
     loop = asyncio.get_running_loop()
     for s in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(s, stop.set)
+    async def sway_gone():
+        sock = os.environ.get("SWAYSOCK")
+        while sock and os.path.exists(sock):
+            await asyncio.sleep(5)
+        if sock:
+            log.info("Sway is gone; stopping")
+            stop.set()
+    watch = asyncio.create_task(sway_gone())  # noqa: F841 (kept for the loop's lifetime)
     await stop.wait()
     await hub.stop()
     return 0

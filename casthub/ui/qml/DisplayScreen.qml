@@ -36,8 +36,11 @@ Rectangle {
     readonly property real ux: width / t.displayWidth
     readonly property real uy: height / t.displayHeight
     readonly property real u: Math.min(ux, uy)
-    readonly property real margin: t.displayMargin * ux
-    readonly property real gutter: t.displayGutter * ux
+    // Grid and top bar use the main frame (1080 x 675, as the login and lock screens do), so
+    // nothing jumps when one screen hands over to the next. Heights below the bar use uy.
+    readonly property real fu: Math.min(width / t.frameWidth, height / t.frameHeight)
+    readonly property real margin: t.gridMargin * fu
+    readonly property real gutter: t.gridGutter * fu
     readonly property real col: (width - 2 * margin - (t.gridColumns - 1) * gutter) / t.gridColumns
     function colX(i) { return margin + i * (col + gutter) }
     readonly property real hair: Math.max(1, Math.round(u))
@@ -57,10 +60,10 @@ Rectangle {
         anchors.fill: parent
         visible: root.screenState !== "streaming"
 
-        GridLines { u: root.ux; tok: t; margin: root.margin; gutter: root.gutter }
+        GridLines { u: root.fu; tok: t; margin: root.margin; gutter: root.gutter }
 
         DisplayBar {
-            u: root.u; ux: root.ux; uy: root.uy; tok: t
+            u: root.fu; tok: t
             margin: root.margin; modeX: root.colX(4)
             dateText: root.days[root.clockNow.getDay()] + " " + root.clockNow.getDate() + " " + root.months[root.clockNow.getMonth()]
             showLogout: true

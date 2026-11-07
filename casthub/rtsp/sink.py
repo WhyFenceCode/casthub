@@ -146,7 +146,7 @@ class RtspSink:
 
     def _send(self, msg: m.RtspMessage) -> None:
         assert self.writer is not None
-        log.debug("→ %s", msg.encode().split(b"\r\n", 1)[0].decode())
+        log.debug("→ %s", msg.encode().decode(errors="replace").replace("\r\n", " | "))
         self.writer.write(msg.encode())
 
     async def _request(self, method: str, uri: str, body: str = "", **headers: str) -> m.RtspMessage:
@@ -166,9 +166,10 @@ class RtspSink:
                 msg = await m.read_message(self.reader)
                 self.last_heard = time.monotonic()
                 if msg.is_request:
-                    log.debug("← %s %s", msg.method, msg.uri)
+                    log.debug("← %s %s %s | %s", msg.method, msg.uri, msg.headers, msg.body.replace("\r\n", " | "))
                     self._on_request(msg)
                 else:
+                    log.debug("← %d %s %s | %s", msg.status, msg.reason, msg.headers, msg.body.replace("\r\n", " | "))
                     fut = self.pending.pop(msg.cseq, None)
                     if fut and not fut.done():
                         fut.set_result(msg)

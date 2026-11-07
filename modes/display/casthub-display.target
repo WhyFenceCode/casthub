@@ -1,4 +1,5 @@
 [Unit]
 Description=Cast Hub Display mode
 Documentation=file:///usr/share/doc/casthub/SPEC.md
-# Services for this mode add WantedBy=casthub-display.target (later milestones).
+# Services of this mode; each one is PartOf= this target, so leaving stops them.
+Wants=casthub-hub.service

@@ -69,9 +69,10 @@ def _native(width: int, height: int) -> int:
 def sink_video_formats(width: int, height: int) -> str:
     """Our `wfd_video_formats` for a screen of width × height: every progressive mode that fits, CBP and CHP."""
     cea, vesa, hh = _mask(CEA, width, height), _mask(VESA, width, height), _mask(HH, width, height)
-    codec = "{:02x} {:02x} {:08x} {:08x} {:08x} 00 0000 0000 00 none none"
-    codecs = ", ".join(codec.format(p, LEVEL_42, cea, vesa, hh) for p in (0x02, 0x01))
-    return f"{_native(width, height):02x} 00 {codecs}"
+    # One H.264 entry, constrained high (a CHP decoder also plays CBP), as known-good
+    # Windows sinks send it; a second codec entry is unusual.
+    codec = f"02 {LEVEL_42:02x} {cea:08x} {vesa:08x} {hh:08x} 00 0000 0000 00 none none"
+    return f"{_native(width, height):02x} 00 {codec}"
 
 
 def parse_video_format(value: str) -> VideoFormat:
@@ -138,6 +139,8 @@ def sink_parameters(width: int, height: int, rtp_port: int, name: str) -> dict[s
         "wfd_uibc_capability": "none",
         "wfd_standby_resume_capability": "none",
         "wfd_connector_type": "none",
+        "wfd_3d_video_formats": "none",
+        "wfd_idr_request_capability": "1",          # we send wfd_idr_request when the decoder needs a key frame
         "intel_friendly_name": name,
         "intel_sink_manufacturer_name": "Cast Hub",
         "intel_sink_model_name": "Cast Hub",

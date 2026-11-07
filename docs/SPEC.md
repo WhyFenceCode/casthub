@@ -31,6 +31,10 @@ Nov 7, 2026 · Torsten
 | D20 | Top bar height | One thin bar (the Desktop-view height, design page 10) on all three tabs. |
 | D21 | Passthrough setup (later, M10) | The Display leave page lists "Passthrough setup" (marked Later until built). There the owner picks a Miracast target (a TV or projector); Cast Hub then acts as an AirPlay receiver and sends what it receives on to that target over Miracast (Cast Hub as Miracast *source*). Needs the receiver hub (M3), AirPlay (M5) and a Miracast sender. |
 | D22 | Leaving and locking | Workstation: "Log out" in the top bar (Plasma's confirmation). Display: "Log out" in the bar and first on the leave page. Every Plasma screen a user can meet (logout confirmation, lock/sleep screen with the signature, on-screen displays, switch user) is themed from the tokens. |
+| D23 | One top bar | Login, lock, Display and leave screens share one bar: main frame (1080 x 675 units), wordmark at the same size, label type, rule at 47 units, mode label at column 5. Moving between them must not make anything jump. |
+| D24 | Brand setup (later, M11) | The brand becomes a setting, so Cast Hub can ship as custom software for anyone: a brand pack (wordmark text, signature text and font or image, accent colour, light/dark tones, boot splash) replaces the hard-coded owner brand. The owner's brand becomes the default pack; applying a pack rebuilds every generated surface (tokens, splash, wallpapers, lock signature). |
+| D25 | Settings tool (later, M11) | "Cast Hub Settings" on the Workstation desktop (a window) and in Console (a text UI): adjust the brand (D24), and choose what the machine boots into: the login screen, or straight into Display mode, where Ctrl + Alt + Esc then leads to the login screen. System changes go through polkit as an admin. |
+| D26 | Device name (later, M11) | Receivers are named `CAST-<DeviceID>`: a short ID that is stable per machine (derived from the machine ID, not readable back to it), shown big on the Display screen. Extra screens add `-2`, `-3`. Replaces the `name_prefix-<n>` naming. |
 
 ---
 
@@ -288,6 +292,7 @@ M1 (Fedora installed) and M2 (Miracast go/no-go connection tests) are done.
 | M6 | Kiosk session | Display mode boots to idle screens; busy rule works; Ctrl + Alt + Esc opens the leave page during a stream |
 | M9 | Desktop shell | The mockup desktop (top bar, Console / Files / Desktop, today panel, meters) installed for a fresh user with no manual setup; logout, lock and switch-user screens themed and working (D22) |
 | M10 | Passthrough | From the leave page, pick a Miracast target; an iPhone mirroring to Cast Hub over AirPlay shows on that target (D21) |
+| M11 | Brand setup and settings | Brand packs (D24) with the current brand as default; Cast Hub Settings on desktop and Console (D25) changes the brand and the boot target; booting into Display mode works, Ctrl + Alt + Esc reaches the login screen; receivers named `CAST-<DeviceID>` (D26) |
 
 ## Constraints and open questions
 
