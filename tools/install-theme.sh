@@ -7,7 +7,7 @@
 #
 # Changes: snapshot of / · /usr/share/fonts/casthub · /usr/share/sddm/themes/casthub
 #   · /usr/share/color-schemes/CastHub*.colors · /usr/share/plasma/look-and-feel/org.casthub.*
-#   · /usr/share/wallpapers/CastHub · /usr/share/konsole/CastHub*
+#   · /usr/share/wallpapers/CastHub · /usr/share/konsole/CastHub* · /etc/profile.d/casthub-terminal.sh
 #   · /etc/xdg/kdeglobals and /etc/xdg/konsolerc (keys set with kwriteconfig6; backups kept)
 # Users who never picked a global theme get Cast Hub at their next login. Anyone who
 # picked one in System Settings keeps it. Undo: docs/RECOVERY.md, "Desktop theme".
@@ -67,6 +67,7 @@ chmod -R u=rwX,go=rX /usr/share/wallpapers/CastHub
 step "Konsole (terminal is always dark)"
 install -m644 "$repo/modes/console/CastHub.colorscheme" "$repo/modes/workstation/CastHub.profile" \
   "$repo/modes/console/CastHubConsole.profile" /usr/share/konsole/
+install -m644 "$repo/system/profile.d/casthub-terminal.sh" /etc/profile.d/casthub-terminal.sh
 
 step "System-wide defaults in /etc/xdg"
 for f in kdeglobals konsolerc; do

@@ -86,4 +86,7 @@ joins the hotspot.
   (background + 12-column grid, built for the real screen).
 - `tools/install-theme.sh`: one installer for every themed surface. It sets system defaults in
   `/etc/xdg`, so every user who never picked a global theme follows Cast Hub.
+- Terminal status (owner request): ink text on a pastel highlight. A failed command leaves an
+  `exit N` chip before the prompt; `casthub_chip error|warn|ok|info TEXT` for scripts; gcc
+  diagnostics as chips. Only in the Cast Hub Konsole profiles (`system/profile.d/casthub-terminal.sh`).
 - Fixed: `install-modes.sh` did not copy `uikit/` with the greeter (`tools/lib/greeter.sh`).

@@ -4,6 +4,7 @@ Font=DM Mono,12,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 LineSpacing=4
 
 [General]
+Environment=TERM=xterm-256color,COLORFGBG=15;0,CASTHUB_TERMINAL=1
 Name=Cast Hub Console
 Parent=FALLBACK/
 TerminalMargin=28
