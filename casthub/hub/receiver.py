@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -118,10 +119,17 @@ class Receiver:
         sink = RtspSink(src.addr, src.rtsp_port, SinkCaps(self.size[0], self.size[1], self.rtp_port, self.name))
         try:
             await self.set_state("connecting", src.name)
-            pipe = self.pipeline_factory(media.default_spec(self.rtp_port, f"Cast Hub {self.name}", self.output),
-                                         first_frame.set,
-                                         lambda e: failed.done() or failed.set_result(e))
-            pipe.start()
+            spec = media.default_spec(self.rtp_port, f"Cast Hub {self.name}", self.output)
+            on_error = lambda e: failed.done() or failed.set_result(e)  # noqa: E731
+            pipe = self.pipeline_factory(spec, first_frame.set, on_error)
+            try:
+                pipe.start()
+            except RuntimeError as e:
+                # Seen once with a real PC, not reproducible since: retry, then fall back to software decoding.
+                log.warning("%s: %s; retrying with %s", self.name, e, "avdec_h264")
+                await asyncio.sleep(0.5)
+                pipe = self.pipeline_factory(dataclasses.replace(spec, decoder="avdec_h264"), first_frame.set, on_error)
+                pipe.start()
             neg = await sink.connect()
             log.info("%s: negotiated %s via %s", self.name, neg.video, src.via)
 

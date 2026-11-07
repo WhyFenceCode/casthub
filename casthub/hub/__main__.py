@@ -82,6 +82,7 @@ class Hub:
         self.ui = UiLink()
         self.mdns = Mdns()
         self.receivers: list[Receiver] = []
+        self.p2p_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         outs = self.outputs if self.cfg.layout == "per_screen" else self.outputs[:1]
@@ -95,7 +96,8 @@ class Hub:
             except Exception as e:  # Avahi down: casting by Wi-Fi discovery + host name still works
                 log.warning("mdns: %s", e)
         if self.cfg.wifi_direct and self.receivers:
-            asyncio.ensure_future(self.p2p_link())
+            # Keep a reference: asyncio holds tasks weakly, and an unreferenced one was collected.
+            self.p2p_task = asyncio.create_task(self.p2p_link())
 
     async def p2p_link(self) -> None:
         """Talk to casthub-p2p (root). Wi-Fi Direct casts go to the first receiver."""
