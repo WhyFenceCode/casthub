@@ -15,6 +15,7 @@ uxplay
 python3-gstreamer1
 python3-dbus-fast
 python3-i3ipc
+dnsmasq          # DHCP on Wi-Fi Direct groups
 
 # Branding (M8): glyph outlines for the signature, QR codes, animated Plymouth splash
 python3-fonttools

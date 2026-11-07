@@ -1,0 +1,19 @@
+[Unit]
+Description=Cast Hub Wi-Fi Direct (Miracast discovery and P2P groups)
+After=wpa_supplicant.service NetworkManager.service
+Wants=wpa_supplicant.service
+
+[Service]
+ExecStart=/usr/libexec/casthub/casthub-p2p
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=casthub
+RuntimeDirectoryPreserve=yes
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/run/casthub
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Wi-Fi Direct advertising and groups (casthub/discovery/p2pd.py). Root: started by casthub-p2p.service.
+exec python3 -I -c 'import sys; sys.path.insert(0, "/usr/lib/casthub"); from casthub.discovery.p2pd import main; raise SystemExit(main())' "$@"

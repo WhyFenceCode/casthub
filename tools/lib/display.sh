@@ -11,6 +11,8 @@ install_display() {
   install -Dm755 "$repo/modes/display/casthub-leave" /usr/libexec/casthub/casthub-leave
   install -Dm755 "$repo/modes/display/casthub-display-ui" /usr/libexec/casthub/casthub-display-ui
   install -Dm755 "$repo/modes/display/casthub-pin" /usr/libexec/casthub/casthub-pin
+  install -Dm755 "$repo/modes/display/casthub-hub" /usr/libexec/casthub/casthub-hub
+  install -Dm755 "$repo/modes/display/casthub-p2p" /usr/libexec/casthub/casthub-p2p
   install -Dm644 "$repo/modes/display/sway.conf" /usr/share/casthub/display/sway.conf
   install -d -m 0750 -o root -g casthub /etc/casthub
   return 0

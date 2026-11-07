@@ -49,6 +49,18 @@ If the lock screen itself ever fails ("The screen locker is broken"), switch to 
 (Ctrl+Alt+F3), log in, and run `loginctl unlock-sessions`.
 If the top bar is gone and nothing responds: Ctrl+Alt+F3, log in, run the commands above.
 
+## Receiver (M3, `tools/install-receiver.sh`)
+
+Wi-Fi misbehaving after installing the receiver? Stop the Wi-Fi Direct service; NetworkManager
+keeps managing Wi-Fi either way.
+
+```sh
+sudo systemctl disable --now casthub-p2p.service
+sudo rm /etc/systemd/system/casthub-p2p.service /etc/firewalld/zones/casthub-p2p.xml
+sudo systemctl daemon-reload && sudo firewall-cmd --reload
+sudo systemctl restart wpa_supplicant NetworkManager   # clears our P2P settings
+```
+
 ## Roll the whole system back to a snapshot
 
 Snapshots are made by `tools/snapshot.sh` before every system change, at the top

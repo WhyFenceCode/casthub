@@ -32,6 +32,8 @@ class Config:
     miracast_base_port: int = 7250
     miracast_interface: str = "wlan0"
     wifi_direct: bool = True
+    p2p_address: str = ""               # our address on a Wi-Fi Direct group, "<ip>/<prefix>"; "" = no Wi-Fi Direct casts
+    rtp_base_port: int = 1028           # receiver n receives RTP on rtp_base_port + 2n
     busy_policy: str = "reject"
     airplay: bool = True
     hotspot: bool = False
@@ -87,6 +89,18 @@ def parse(data: dict) -> Config:
     port = _get(mc, "base_port", int, d.miracast_base_port)
     if not 1024 <= port <= 65000:
         raise ConfigError(f"miracast.base_port out of range: {port}")
+    rtp_port = _get(mc, "rtp_base_port", int, d.rtp_base_port)
+    if not 1024 <= rtp_port <= 65000:
+        raise ConfigError(f"miracast.rtp_base_port out of range: {rtp_port}")
+    p2p_address = _get(mc, "p2p_address", str, d.p2p_address)
+    if p2p_address:
+        import ipaddress
+        try:
+            ipaddress.IPv4Interface(p2p_address)
+        except ValueError:
+            raise ConfigError(f"miracast.p2p_address must be <ipv4>/<prefix>, got {p2p_address!r}") from None
+        if "/" not in p2p_address:
+            raise ConfigError("miracast.p2p_address needs a prefix length, e.g. /24")
     if _get(sw, "pin", str, ""):
         raise ConfigError("switcher.pin is plain text; set it with `casthub-pin` so only pin_hash is stored")
     lat = _get(disp, "latitude", (int, float), None)
@@ -106,6 +120,8 @@ def parse(data: dict) -> Config:
         miracast_base_port=port,
         miracast_interface=_get(mc, "interface", str, d.miracast_interface),
         wifi_direct=_get(mc, "wifi_direct", bool, d.wifi_direct),
+        p2p_address=p2p_address,
+        rtp_base_port=rtp_port,
         busy_policy=busy,
         airplay=_get(ap, "enabled", bool, d.airplay),
         hotspot=_get(hs, "enabled", bool, d.hotspot),
