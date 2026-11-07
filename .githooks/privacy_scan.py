@@ -60,6 +60,12 @@ FORBIDDEN_PATH_GLOBS = [
     # Owner decision: the spec PDF is never committed; docs/SPEC.md is tracked instead.
     "SPEC.pdf",
     "*/SPEC.pdf",
+    # Owner decision: nothing from sudo / the root helper is ever committed.
+    "*root-actions*",
+    "*.askpass",
+    "*sudo*.log",
+    "*/.sudo_as_admin_successful",
+    ".sudo_as_admin_successful",
 ]
 
 # GUIDs and literal secrets are allowed only in made-up test fixtures.
@@ -79,6 +85,9 @@ SECRET_RE = re.compile(
     r"""(?ix)\b(pin|pin_hash|psk|password|passwd|passphrase|wpa_passphrase|secret)\b
         \s*[=:]\s*(["'])(?!<)(?!\2)([^"'\n]+)\2"""
 )
+
+# A password being fed to sudo, in any form.
+SUDO_PW_RE = re.compile(r"\bsudo\b[^\n;&|]*\s-[A-Za-z]*S\b|\bSUDO_ASKPASS\s*=|--stdin\b[^\n]*\bsudo\b")
 
 DOC_V4_NETS = [ipaddress.ip_network(n) for n in ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24")]
 DOC_V6_NET = ipaddress.ip_network("2001:db8::/32")
@@ -240,6 +249,9 @@ def scan_text(path: str, lineno_base: int, text: str, deny: set[str], allow: set
                 if set(g.replace("-", "")) == {"0"} or g in allow:
                     continue
                 findings.append(Finding(where, "guid", f"GUID {mask(g)} outside tests/fixtures/"))
+
+            if SUDO_PW_RE.search(line):
+                findings.append(Finding(where, "sudo", "sudo password handling (sudo -S / SUDO_ASKPASS); use tools/rootd.py"))
 
             for m in SECRET_RE.finditer(line):
                 if m.group(3).lower() in allow:

@@ -1,0 +1,28 @@
+# Fedora packages Cast Hub needs, beyond the stock Fedora KDE install with
+# RPM Fusion + intel-media-driver. One per line; '#' starts a comment.
+# Install: tools/asroot.py --why "Cast Hub packages" -- dnf install $(grep -o '^[^#]*' system/packages.txt)
+
+# Login screen and modes (M7)
+sddm
+sddm-wayland-plasma
+sway
+swaybg
+
+# AirPlay (M5)
+uxplay
+
+# Receiver in Python (M3-M6): GStreamer overrides, D-Bus (wpa_supplicant, Avahi), Sway IPC
+python3-gstreamer1
+python3-dbus-fast
+python3-i3ipc
+
+# Branding (M8): glyph outlines for the signature, QR codes, animated Plymouth splash
+python3-fonttools
+python3-qrcode
+plymouth-plugin-script
+
+# Development: tests, lint, QML lint, packet captures (captures stay in local/)
+python3-pytest
+ruff
+qt6-qtdeclarative-devel
+wireshark-cli

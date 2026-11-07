@@ -52,6 +52,14 @@ class TestRules(unittest.TestCase):
         self.assertEqual(rules("casthub.example.toml", 'pin = ""'), [])
         self.assertEqual(rules("casthub.example.toml", 'psk = "<psk>"'), [])
 
+    def test_sudo_password_handling_blocked(self):
+        sudo = "su" + "do"
+        self.assertIn("sudo", rules("tools/x.sh", f"echo pw | {sudo} -S dnf install sway"))
+        self.assertIn("sudo", rules("tools/x.sh", f"{sudo} -kS true"))
+        self.assertIn("sudo", rules("tools/x.sh", "export " + "SUDO_" + "ASKPASS=/tmp/a"))
+        self.assertEqual(rules("tools/x.sh", f"{sudo} tools/install-modes.sh --location City"), [])
+        self.assertEqual(rules("docs/a.md", f"Start it with {sudo} python3 -I tools/rootd.py"), [])
+
     def test_denylist_case_insensitive_and_masked(self):
         findings = ps.scan_text("docs/a.md", 1, "Joined MyHomeNet today", {"myhomenet"}, set())
         self.assertEqual([f.rule for f in findings], ["denylist"])
@@ -62,7 +70,8 @@ class TestRules(unittest.TestCase):
 
     def test_forbidden_paths(self):
         for p in ["local/probe.txt", "casthub.toml", "etc/casthub.toml", "cap.pcapng", "fw.rom",
-                  "Screenshot_2026.png", "docs/screenshot-login.png", "x.log", "docs/SPEC.pdf"]:
+                  "Screenshot_2026.png", "docs/screenshot-login.png", "x.log", "docs/SPEC.pdf", "local/root-actions.log",
+                  "root-actions.log", "pw.askpass", "sudo-session.log", ".sudo_as_admin_successful"]:
             self.assertTrue(ps.check_path(p, set(), set()), p)
         for p in ["casthub.example.toml", "brand/wallpaper.png", "design/login.pdf"]:
             self.assertFalse(ps.check_path(p, set(), set()), p)

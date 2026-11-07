@@ -32,6 +32,12 @@ Screencast*
 docs/SPEC.pdf
 SPEC.pdf
 
+# sudo / root helper: never committed (the helper keeps its state in /run/user)
+root-actions*
+*.askpass
+*sudo*.log
+.sudo_as_admin_successful
+
 # Secrets
 *.pem
 *.key

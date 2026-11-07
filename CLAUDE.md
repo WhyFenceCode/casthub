@@ -25,6 +25,15 @@ Spec: `docs/SPEC.md` (source: `docs/SPEC.pdf`). Visual source of truth: `design/
 - Hooks must be enabled per clone: `git config core.hooksPath .githooks`
 - Scan files ad hoc: `python3 -I .githooks/privacy_scan.py --paths <files>`
 
+## Privileged actions
+
+- Never ask for, read, store or pipe the sudo password (no stdin-password flag, no askpass helper).
+- Run root commands only through the root helper, which the owner starts once:
+  `sudo python3 -I tools/rootd.py`. Then request each action with
+  `tools/asroot.py --why "<reason>" -- <command>`. The owner approves each one there.
+- Commit any repo script before asking to run it as root, so the helper shows it as unchanged.
+- Root-helper state stays out of the repo (`/run/user/<uid>/casthub-root`, `local/root-actions.log`).
+
 ## Working rules
 
 - Read `docs/SPEC.md` before starting a milestone. Work on one milestone at a time.
