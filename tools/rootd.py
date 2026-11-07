@@ -19,6 +19,7 @@ Nothing from here is committed:
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import hashlib
 import json
 import os
@@ -31,7 +32,6 @@ import stat
 import subprocess
 import sys
 import time
-import functools
 from pathlib import Path
 
 print = functools.partial(print, flush=True)  # noqa: A001  keep helper text in order with command output
@@ -121,7 +121,7 @@ class Helper:
     def as_user(self, *argv: str) -> subprocess.CompletedProcess:
         """Run a read-only helper (git) as the user, never as root: repo config can run commands."""
         cmd = list(argv) if TEST else ["runuser", "-u", self.user, "--", *argv]
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        return subprocess.run(check=False, args=cmd, capture_output=True, text=True, timeout=20)
 
     def banner(self) -> None:
         head = self.as_user("git", "-C", str(REPO), "log", "-1", "--format=%h %s").stdout.strip()
@@ -136,7 +136,7 @@ class Helper:
             return
         ans = self.ask("Take a Btrfs snapshot of / before any changes this session? [Y/n] ")
         if ans in ("", "y", "yes"):
-            r = subprocess.run([str(REPO / "tools" / "snapshot.sh"), "rootd-session"])
+            r = subprocess.run(check=False, args=[str(REPO / "tools" / "snapshot.sh"), "rootd-session"])
             self.log(f"snapshot exit={r.returncode}")
         print()
 

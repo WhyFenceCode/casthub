@@ -72,7 +72,7 @@ def rgb(h: str) -> str:
 def mix(a: str, b: str, f: float) -> str:
     pa = [int(a.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)]
     pb = [int(b.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)]
-    return "#" + "".join(f"{round(x + (y - x) * f):02X}" for x, y in zip(pa, pb))
+    return "#" + "".join(f"{round(x + (y - x) * f):02X}" for x, y in zip(pa, pb, strict=True))
 
 
 def konsole_scheme(t: dict) -> str:

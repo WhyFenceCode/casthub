@@ -3,20 +3,20 @@ import QtQuick
 
 Text {
     id: label
-    property var style
+    property var textStyle
     property real u: 1
-    property QtObject tok
+    property Tokens tok
 
-    readonly property real px: Math.max(1, style.size * u)
+    readonly property real px: Math.max(1, textStyle.size * u)
 
     color: tok ? tok.fg : "black"
-    font.family: style.family
+    font.family: textStyle.family
     font.pixelSize: px
-    font.weight: style.weight
-    font.letterSpacing: style.tracking * px
-    font.capitalization: style.upper ? Font.AllUppercase : Font.MixedCase
+    font.weight: textStyle.weight
+    font.letterSpacing: textStyle.tracking * px
+    font.capitalization: textStyle.upper ? Font.AllUppercase : Font.MixedCase
     // Variable-font axes. Axes a font doesn't have are ignored.
-    font.variableAxes: ({ "wght": style.weight, "wdth": style.width, "opsz": Math.min(96, Math.max(12, px)) })
+    font.variableAxes: ({ "wght": textStyle.weight, "wdth": textStyle.width, "opsz": Math.min(96, Math.max(12, px)) })
     renderType: Text.QtRendering
     textFormat: Text.PlainText
 }

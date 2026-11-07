@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class TestBrand(unittest.TestCase):
     def test_generated_files_in_sync(self):
-        r = subprocess.run([sys.executable, "-I", str(ROOT / "brand" / "build.py"), "--check"], capture_output=True, text=True)
+        cmd = [sys.executable, "-I", str(ROOT / "brand" / "build.py"), "--check"]
+        r = subprocess.run(cmd, check=False, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_fonts_have_licences(self):

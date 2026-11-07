@@ -159,8 +159,8 @@ Rectangle {
         x: root.margin
         anchors.verticalCenter: topRule.top
         anchors.verticalCenterOffset: -24 * root.u
-        Label { text: root.cfg("Wordmark", "Torsten Young"); u: root.u; tok: t; style: t.wordmark }
-        Label { text: "."; u: root.u; tok: t; style: t.wordmark; color: t.accent }
+        Label { text: root.cfg("Wordmark", "Torsten Young"); u: root.u; tok: t; textStyle: t.wordmark }
+        Label { text: "."; u: root.u; tok: t; textStyle: t.wordmark; color: t.accent }
     }
     Row {
         x: root.colX(4)
@@ -169,7 +169,7 @@ Rectangle {
         spacing: 8 * root.u
         Rectangle { width: 6 * root.u; height: width; color: t.accent; anchors.verticalCenter: parent.verticalCenter }
         Label {
-            u: root.u; tok: t; style: t.label
+            u: root.u; tok: t; textStyle: t.label
             text: (typeof sddm !== "undefined" ? sddm.hostName : "") + " · " + root.cfg("OsLabel", "Fedora Linux")
         }
     }
@@ -179,8 +179,8 @@ Rectangle {
         anchors.verticalCenter: topRule.top
         anchors.verticalCenterOffset: -24 * root.u
         spacing: 14 * root.u
-        Label { u: root.u; tok: t; style: t.label; color: t.muted; text: root.cfg("Location", ""); visible: text.length > 0 }
-        Label { u: root.u; tok: t; style: t.label; text: Qt.formatTime(root.clockNow, "HH:mm") }
+        Label { u: root.u; tok: t; textStyle: t.label; color: t.muted; text: root.cfg("Location", ""); visible: text.length > 0 }
+        Label { u: root.u; tok: t; textStyle: t.label; text: Qt.formatTime(root.clockNow, "HH:mm") }
     }
     Rectangle { id: topRule; x: root.margin; y: 47 * root.u; width: root.width - 2 * root.margin; height: root.hair; color: t.fg }
 
@@ -189,13 +189,13 @@ Rectangle {
         id: bigClock
         x: root.margin - 3 * root.u
         y: 477 * root.u - baselineOffset
-        u: root.u; tok: t; style: t.clock
+        u: root.u; tok: t; textStyle: t.clock
         text: Qt.formatTime(root.clockNow, "HH:mm")
     }
     Label {
         x: root.margin
         y: 541 * root.u - baselineOffset
-        u: root.u; tok: t; style: t.date
+        u: root.u; tok: t; textStyle: t.date
         text: Qt.formatDate(root.clockNow, "dddd d MMMM")
     }
 
@@ -211,7 +211,7 @@ Rectangle {
             y: 201 * root.u - height / 2
             spacing: 6 * root.u
             Rectangle { width: 6 * root.u; height: width; color: t.accent; anchors.verticalCenter: parent.verticalCenter }
-            Label { u: root.u; tok: t; style: t.label; text: "Mode" }
+            Label { u: root.u; tok: t; textStyle: t.label; text: "Mode" }
         }
 
         Column {
@@ -253,21 +253,21 @@ Rectangle {
                 width: 36 * root.u; height: width; radius: width / 2
                 y: 1 * root.u
                 color: t.well
-                Label { anchors.centerIn: parent; u: root.u; tok: t; style: t.label; text: root.initials(root.user.realName) }
+                Label { anchors.centerIn: parent; u: root.u; tok: t; textStyle: t.label; text: root.initials(root.user.realName) }
             }
             Column {
                 anchors.left: avatar.right
                 anchors.leftMargin: 11 * root.u
                 anchors.verticalCenter: avatar.verticalCenter
                 spacing: 3 * root.u
-                Label { u: root.u; tok: t; style: t.name; text: root.user.realName || "No users" }
+                Label { u: root.u; tok: t; textStyle: t.name; text: root.user.realName || "No users" }
                 Label {
-                    u: root.u; tok: t; style: t.label; color: t.muted
+                    u: root.u; tok: t; textStyle: t.label; color: t.muted
                     font.capitalization: Font.MixedCase
                     text: root.user.name + "@" + (typeof sddm !== "undefined" ? sddm.hostName : "")
                 }
             }
-            Label { y: 57 * root.u - height / 2; u: root.u; tok: t; style: t.label; color: t.muted; text: "Password" }
+            Label { y: 57 * root.u - height / 2; u: root.u; tok: t; textStyle: t.label; color: t.muted; text: "Password" }
             TextInput {
                 id: password
                 y: 85 * root.u - height / 2
@@ -298,10 +298,10 @@ Rectangle {
                 width: parent.width - 30 * root.u
                 wrapMode: Text.WordWrap
                 lineHeight: 1.22
-                u: root.u; tok: t; style: t.body
+                u: root.u; tok: t; textStyle: t.body
                 text: "No sign-in needed. This screen turns into a receiver for AirPlay and Miracast until you leave display mode."
             }
-            Label { y: 84 * root.u - height / 2; u: root.u; tok: t; style: t.label; color: t.muted; text: "Files and accounts stay locked" }
+            Label { y: 84 * root.u - height / 2; u: root.u; tok: t; textStyle: t.label; color: t.muted; text: "Files and accounts stay locked" }
             Rectangle { y: 104 * root.u; width: parent.width; height: root.hair; color: t.line }
         }
 
@@ -332,14 +332,14 @@ Rectangle {
     Label {
         x: root.margin
         y: bottomRule.y + 35 * root.u - height / 2
-        u: root.u; tok: t; style: t.label; color: t.muted
+        u: root.u; tok: t; textStyle: t.label; color: t.muted
         text: root.cfg("OsLabel", "Fedora Linux") + " · " + root.cfg("SessionLabel", "Wayland")
     }
     Label {
         visible: root.isPrimary
         x: root.colX(4)
         y: bottomRule.y + 35 * root.u - height / 2
-        u: root.u; tok: t; style: t.label
+        u: root.u; tok: t; textStyle: t.label
         color: root.message.length ? t.error : t.muted
         text: root.message.length ? root.message
              : root.mode.password ? "Caps lock · " + ((typeof keyboard !== "undefined" && keyboard.capsLock) ? "On" : "Off")

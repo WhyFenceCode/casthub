@@ -35,7 +35,7 @@ class TestSessionGate(unittest.TestCase):
 
     def run_gate(self, user, groups, mode):
         env = dict(os.environ, FAKE_USER=user, FAKE_GROUPS=groups, PATH=f"{self.dir / 'bin'}:{os.environ['PATH']}")
-        r = subprocess.run(["bash", str(self.dir / "gate.sh"), mode], capture_output=True, text=True, env=env)
+        r = subprocess.run(check=False, args=["bash", str(self.dir / "gate.sh"), mode], capture_output=True, text=True, env=env)
         return r.returncode, r.stdout
 
     def test_allowed(self):

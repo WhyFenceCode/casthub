@@ -1,0 +1,15 @@
+[project]
+name = "casthub"
+version = "0.1.0"
+description = "Branded Fedora system with a login-free AirPlay/Miracast display mode"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "PLW1510"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

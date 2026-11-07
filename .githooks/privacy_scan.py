@@ -282,7 +282,7 @@ def blob_to_text(path: str, data: bytes) -> str | None:
             parts = []
             for cmd in (["pdftotext", "-q", str(p), "-"], ["pdfinfo", str(p)]):
                 try:
-                    parts.append(subprocess.run(cmd, capture_output=True, text=True, timeout=60).stdout)
+                    parts.append(subprocess.run(check=False, args=cmd, capture_output=True, text=True, timeout=60).stdout)
                 except (OSError, subprocess.SubprocessError):
                     return None
             return "\n".join(parts)
@@ -350,7 +350,7 @@ def main(argv: list[str]) -> int:
     if mode == "--staged":
         findings = scan_staged(deny, allow)
     elif mode == "--message" and rest:
-        text = "\n".join(l for l in Path(rest[0]).read_text().splitlines() if not l.startswith("#"))
+        text = "\n".join(ln for ln in Path(rest[0]).read_text().splitlines() if not ln.startswith("#"))
         findings = [Finding("commit message", f.rule, f.detail) for f in scan_text("", 1, text, deny, allow)]
     elif mode == "--push":
         # stdin lines: <local ref> <local sha> <remote ref> <remote sha>

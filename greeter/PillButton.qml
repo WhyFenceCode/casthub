@@ -6,7 +6,7 @@ Item {
     property string text
     property string kind: "outline"
     property real u: 1
-    property QtObject tok
+    property Tokens tok
     signal clicked()
 
     readonly property bool solid: kind === "solid"
@@ -29,7 +29,7 @@ Item {
             text: btn.text
             u: btn.u
             tok: btn.tok
-            style: btn.tok.label
+            textStyle: btn.tok.label
             color: btn.solid ? btn.tok.bg : btn.tok.fg
         }
     }

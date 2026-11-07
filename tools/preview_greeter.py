@@ -20,7 +20,17 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import (  # noqa: E402
-    QAbstractListModel, QByteArray, QDateTime, QModelIndex, QObject, Property, Qt, QTimer, QUrl, Signal, Slot,
+    Property,
+    QAbstractListModel,
+    QByteArray,
+    QDateTime,
+    QModelIndex,
+    QObject,
+    Qt,
+    QTimer,
+    QUrl,
+    Signal,
+    Slot,
 )
 from PySide6.QtGui import QFontDatabase, QGuiApplication  # noqa: E402
 from PySide6.QtQml import QQmlPropertyMap  # noqa: E402
@@ -37,7 +47,7 @@ class ListModel(QAbstractListModel):
         self._last_index = last_index
         self._last_user = last_user
 
-    def rowCount(self, parent=QModelIndex()):  # noqa: N802
+    def rowCount(self, parent=QModelIndex()):  # noqa: N802, B008  (Qt signature)
         return len(self._rows)
 
     def data(self, index, role):
@@ -163,8 +173,8 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     def press_keys():
-        from PySide6.QtGui import QKeyEvent
         from PySide6.QtCore import QEvent
+        from PySide6.QtGui import QKeyEvent
         for k in filter(None, a.press.split(",")):
             key = getattr(Qt, f"Key_{k}")
             for t in (QEvent.KeyPress, QEvent.KeyRelease):

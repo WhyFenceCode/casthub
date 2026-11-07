@@ -9,7 +9,7 @@ Rectangle {
     property bool selected: false
     property bool available: true
     property real u: 1
-    property QtObject tok
+    property Tokens tok
     signal picked()
 
     height: 51 * u
@@ -22,7 +22,7 @@ Rectangle {
         x: 10 * row.u
         anchors.verticalCenter: parent.verticalCenter
         text: (row.number < 10 ? "0" : "") + row.number
-        u: row.u; tok: row.tok; style: row.tok.label
+        u: row.u; tok: row.tok; textStyle: row.tok.label
         color: row.selected ? row.tok.bg : row.tok.muted
     }
 
@@ -31,8 +31,8 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 1 * row.u
         opacity: row.available ? 1 : 0.45
-        Label { text: row.title; u: row.u; tok: row.tok; style: row.tok.title; color: row.ink }
-        Label { text: row.subtitle; u: row.u; tok: row.tok; style: row.tok.small; color: row.ink }
+        Label { text: row.title; u: row.u; tok: row.tok; textStyle: row.tok.title; color: row.ink }
+        Label { text: row.subtitle; u: row.u; tok: row.tok; textStyle: row.tok.small; color: row.ink }
     }
 
     Rectangle {
