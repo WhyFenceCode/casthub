@@ -1,0 +1,6 @@
+#!/bin/bash
+# Leave Display mode and return to the login screen.
+# M7: leaves directly. M6 puts the PIN overlay in front of this (SPEC D7).
+logger -t casthub-leave "leaving display mode"
+systemctl --user stop casthub-display.target 2>/dev/null
+exec swaymsg exit

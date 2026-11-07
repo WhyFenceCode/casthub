@@ -1,0 +1,114 @@
+# Cast Hub brand tokens: the ONLY place visual values are defined.
+# Edit here, run `python3 brand/build.py`, then reinstall (tools/install-modes.sh).
+#
+# Source: design/ mockups (measured at 1:1 on the 1080×675 frame), cross-checked
+# against the brand page on the Torsten Young website. Values marked GUESS are not
+# shown in either and need the owner's confirmation.
+
+[frame]
+# Design frame of the mockups. Sizes below are in frame units; surfaces scale
+# them by (screen height / height).
+width = 1080
+height = 675
+
+[grid]
+columns = 12
+margin = 42
+gutter = 21.6
+
+[color]
+accent = "#7E76D0"
+success = "#5FA87A"   # GUESS
+warning = "#D2A84B"   # GUESS
+error = "#D0605E"     # GUESS
+
+[color.light]
+bg = "#E6E6E6"        # paper
+fg = "#0B0B0B"        # ink
+muted = "#555555"
+line = "#CBCBCB"
+well = "#D6D6D6"      # avatar / image wells
+
+[color.dark]
+bg = "#161616"        # night
+fg = "#FFFFFF"
+muted = "#A0A0A0"
+line = "#2E2E2E"
+well = "#2A2A2A"      # GUESS: dark avatar well
+
+[color.terminal]
+# The terminal is always dark, whatever the OS theme.
+bg = "#161616"
+fg = "#E6E6E6"
+muted = "#A0A0A0"
+black = "#0B0B0B"
+red = "#D0605E"       # GUESS (ANSI colours are not in the mockups)
+green = "#5FA87A"     # GUESS
+yellow = "#D2A84B"    # GUESS
+blue = "#7E76D0"      # accent
+magenta = "#A79FE6"   # GUESS: light accent
+cyan = "#7FB6C4"      # GUESS
+white = "#E6E6E6"
+
+[font]
+display = "Bricolage Grotesque"   # wordmark, clock, headings
+text = "Instrument Sans"          # body, titles
+mono = "DM Mono"                  # labels, buttons, terminal
+script = "Mrs Saint Delafield"    # signature only
+
+# Type styles: size in frame units, weight, optional width axis (wdth %),
+# letter spacing in em, uppercase.
+[type.wordmark]
+family = "display"
+size = 14.6
+weight = 800
+width = 87.5
+tracking = -0.01
+upper = true
+
+[type.clock]
+family = "display"
+size = 209
+weight = 800
+width = 75
+tracking = -0.02
+
+[type.date]
+family = "display"
+size = 31
+weight = 500
+
+[type.title]
+family = "text"
+size = 14.3
+weight = 700
+
+[type.body]
+family = "text"
+size = 12.5
+weight = 400
+
+[type.small]
+family = "text"
+size = 9.6
+weight = 400
+
+[type.name]
+family = "text"
+size = 12.4
+weight = 600
+
+[type.label]
+family = "mono"
+size = 9.2
+weight = 400
+tracking = 0.11
+upper = true
+
+[radius]
+pill = 999
+panel = 6           # GUESS: window/panel corners on the desktop mockups
+
+[motion]
+fast = 120          # ms
+normal = 220

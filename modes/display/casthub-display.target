@@ -1,0 +1,4 @@
+[Unit]
+Description=Cast Hub Display mode
+Documentation=file:///usr/share/doc/casthub/SPEC.md
+# Services for this mode add WantedBy=casthub-display.target (later milestones).

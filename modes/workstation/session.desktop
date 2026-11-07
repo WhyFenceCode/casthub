@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Workstation
+Comment=Personal desktop · sign in
+Exec=/usr/libexec/casthub/casthub-session workstation
+DesktopNames=KDE

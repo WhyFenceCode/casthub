@@ -1,0 +1,7 @@
+[Unit]
+Description=Cast Hub Workstation mode
+Documentation=file:///usr/share/doc/casthub/SPEC.md
+# Services for this mode add WantedBy=casthub-workstation.target (later milestones).
+
+[Install]
+WantedBy=plasma-workspace.target

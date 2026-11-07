@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Display
+Comment=Screen-share receiver · no sign-in
+Exec=/usr/libexec/casthub/casthub-session display
+DesktopNames=sway

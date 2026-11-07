@@ -1,0 +1,4 @@
+[Unit]
+Description=Cast Hub Console mode
+Documentation=file:///usr/share/doc/casthub/SPEC.md
+# Services for this mode add WantedBy=casthub-console.target (later milestones).

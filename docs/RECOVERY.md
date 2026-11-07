@@ -1,0 +1,36 @@
+# Recovery
+
+## The login screen doesn't appear, or looks broken
+
+1. Press **Ctrl + Alt + F3** for a text console and sign in with your admin account.
+2. Go back to Fedora's login screen:
+   `sudo ~/code/casthub/tools/switch-display-manager.sh plasmalogin && sudo reboot`
+
+If only the *theme* is broken, SDDM shows its built-in fallback theme, which still
+lists only the three Cast Hub modes. Pick **Workstation** and sign in normally.
+
+## Stuck in Display mode
+
+- **Ctrl + Alt + Esc** leaves Display mode (M7). In M6 this gains a PIN.
+- **Ctrl + Alt + F3** gives a text console.
+
+## Undo the PAM change
+
+`tools/install-modes.sh` saved the original as `/etc/pam.d/sddm.casthub-backup`:
+`sudo cp /etc/pam.d/sddm.casthub-backup /etc/pam.d/sddm`
+
+## Roll the whole system back to a snapshot
+
+Snapshots are made by `tools/snapshot.sh` before every system change, at the top
+level of the root Btrfs volume in `snapshots/`. From a text console or a live USB:
+
+```sh
+sudo mount -o subvolid=5 /dev/<root-partition> /mnt
+ls /mnt/snapshots                                  # pick one
+sudo mv /mnt/root /mnt/root.broken
+sudo btrfs subvolume snapshot /mnt/snapshots/<name> /mnt/root   # writable copy
+sudo reboot
+# once happy: sudo btrfs subvolume delete /mnt/root.broken
+```
+
+`/home` is a separate subvolume and is not touched by this.

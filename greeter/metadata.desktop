@@ -1,0 +1,11 @@
+[SddmGreeterTheme]
+Name=Cast Hub
+Description=Cast Hub mode picker: Workstation, Display, Console
+Author=Torsten Young
+Type=sddm-theme
+Version=0.1
+MainScript=Main.qml
+ConfigFile=theme.conf
+Theme-Id=casthub
+Theme-API=2.0
+QtVersion=6

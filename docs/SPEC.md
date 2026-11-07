@@ -240,8 +240,9 @@ casthub/
   greeter/                  # SDDM theme: the mode-picker login screen
   shell/                    # desktop shell
   modes/workstation/        # session file + target
-  modes/casthub/            # session, target, sway config, units
-  modes/console/            # session file, admin check
+  modes/display/            # session, target, sway config, leave script
+  modes/console/            # session, target, sway config, Konsole profile
+  modes/casthub-session     # session gatekeeper: who may start which mode
   brand/                    # tokens.toml, logos, signature, build.py
   tools/                    # probe scripts (write to local/ only)
   tests/                    # unit tests with made-up fixture values

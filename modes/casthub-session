@@ -1,0 +1,34 @@
+#!/bin/bash
+# casthub-session <mode>: the Exec of every Cast Hub login session.
+# It decides who may run which mode, so a broken or fallback login theme can't
+# be used to start the wrong mode (e.g. a passwordless desktop as `casthub`).
+set -u
+mode=${1:-}
+user=$(id -un)
+display_user=casthub
+
+log() { logger -t casthub-session -- "$*"; }
+refuse() { log "refused: $*"; exit 1; }   # non-zero exit returns to the login screen
+in_group() { id -nG "$user" | tr ' ' '\n' | grep -qx "$1"; }
+
+case "$mode" in
+  workstation)
+    [ "$user" != "$display_user" ] || refuse "$display_user may not start workstation"
+    log "start workstation for $user"
+    exec /usr/libexec/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland
+    ;;
+  display)
+    [ "$user" = "$display_user" ] || refuse "display mode runs only as $display_user (got $user)"
+    log "start display"
+    exec sway --config /usr/share/casthub/display/sway.conf
+    ;;
+  console)
+    [ "$user" != "$display_user" ] || refuse "$display_user may not start console"
+    in_group wheel || refuse "$user is not an admin (wheel)"
+    log "start console for $user"
+    exec sway --config /usr/share/casthub/console/sway.conf
+    ;;
+  *)
+    refuse "unknown mode '$mode'"
+    ;;
+esac
