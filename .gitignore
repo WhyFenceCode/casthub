@@ -1,0 +1,57 @@
+# --- Privacy: nothing from this machine goes to GitHub (see docs/SPEC.md) ---
+
+# Local-only workspace: probe output, logs, captures, screenshots, denylist
+/local/
+
+# Real config is never tracked; only casthub.example.toml is
+casthub.toml
+!casthub.example.toml
+*.nmconnection
+
+# Diagnostics and captures
+*.log
+*.journal
+*.pcap
+*.pcapng
+*.cap
+*.har
+
+# Firmware / hardware dumps
+*.rom
+*.bin
+*.fd
+*.dmp
+
+# Screenshots and screen photos (brand/ and design/ assets are named explicitly)
+Screenshot*
+screenshot*
+Screencast*
+*.heic
+
+# The spec PDF stays local; docs/SPEC.md is the tracked copy
+docs/SPEC.pdf
+SPEC.pdf
+
+# Secrets
+*.pem
+*.key
+.env
+.env.*
+
+# Python / tooling
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+*.egg-info/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store

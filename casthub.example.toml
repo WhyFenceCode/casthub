@@ -1,0 +1,31 @@
+# Cast Hub example config. Placeholders only.
+# Copy to /etc/casthub/casthub.toml (root:casthub, mode 0640) and fill in there.
+# The real file is never committed.
+
+[brand]
+name_prefix = "Brand"            # receivers named Brand-1, Brand-2 …
+
+[layout]
+mode = "per_screen"              # per_screen | per_radio | mirror_all
+
+[miracast]
+base_port = 7250
+wifi_direct = true
+interface = "wlan0"
+busy_policy = "reject"           # reject | replace
+
+[airplay]
+enabled = true
+
+[hotspot]
+enabled = false
+interface = "wlan1"              # USB Wi-Fi adapter
+ssid = "<ssid>"
+# The passphrase is NOT stored here; it lives in NetworkManager's system connection.
+
+[switcher]
+pin = ""                         # set at install; replaced by pin_hash on save
+
+[[screen]]                       # optional pinning; otherwise by plug order
+output = "eDP-1"
+name = "Brand-Main"

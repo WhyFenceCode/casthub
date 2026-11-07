@@ -1,0 +1,3 @@
+#!/bin/sh
+# Second line of defence: rescans every commit being pushed (catches `git commit --no-verify`).
+exec python3 -I "$(git rev-parse --show-toplevel)/.githooks/privacy_scan.py" --push

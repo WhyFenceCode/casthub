@@ -1,0 +1,3 @@
+#!/bin/sh
+# Blocks commits containing machine-specific data. See docs/SPEC.md, "Rule: nothing from this machine goes to GitHub".
+exec python3 -I "$(git rev-parse --show-toplevel)/.githooks/privacy_scan.py" --staged

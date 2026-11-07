@@ -1,0 +1,3 @@
+# Exact strings reviewed by the owner and accepted as NOT machine-specific
+# (false positives such as version numbers that look like IP addresses).
+# One per line. Additions show up in diffs: only the owner adds entries.
