@@ -38,5 +38,10 @@ Built (repo):
 Verified without root: theme renders and matches the mockups at 1080×675 and 1920×1080;
 keyboard flow and `sddm.login` calls correct; gatekeeper allow/refuse table (tests).
 
-Left for acceptance (needs sudo + reboot): install, switch to SDDM, then check that Display
+Installed through the root helper (snapshots taken first): packages, theme, sessions, `casthub`
+account, PAM rule, SDDM config. Real `sddm-greeter-qt6 --test-mode` loads the theme with no
+errors (a deliberately broken copy falls back to the built-in theme, as intended). Display
+manager switched to SDDM.
+
+Left for acceptance (after reboot): install, switch to SDDM, then check that Display
 starts with no password, Console works for admins only, and leaving a mode returns to the login screen.
