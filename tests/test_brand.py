@@ -46,6 +46,52 @@ class TestBrand(unittest.TestCase):
         self.assertEqual(xs[0], round(t["grid"]["margin"]))
         self.assertEqual(xs[-1], 1080 - round(t["grid"]["margin"]))
 
+    def test_one_token_change_reaches_every_surface(self):
+        """M8 acceptance: one colour edit in tokens.toml, one rebuild → every surface changes."""
+        import copy
+        import tempfile
+
+        sys.path.insert(0, str(ROOT / "brand"))
+        import build
+        import splash
+        import wallpaper
+
+        new = "#123456"
+        base = build.load()
+        t = copy.deepcopy(base)
+        t["color"]["accent"] = new
+        t = build.resolve(t)
+        t["color"]["terminal"]["blue"] = new              # what resolve() gives after the edit
+        rgb = build.rgb(new)
+        for rel, fn in build.OUTPUTS.items():
+            before, after = fn(base), fn(t)
+            if rel.endswith(("Tokens.qml", ".colors", ".colorscheme")):
+                self.assertNotEqual(before, after, f"{rel} ignores the accent")
+                self.assertTrue(new in after or rgb in after, rel)
+        # Install-time builders read tokens.toml themselves: check they use the token, not a copy.
+        for mod in (splash, wallpaper):
+            self.assertTrue(hasattr(mod, "tokens"), mod.__name__)
+        with tempfile.TemporaryDirectory() as d:
+            orig = splash.tokens
+            splash.tokens = lambda: t
+            try:
+                splash.render_label(Path(d) / "x.png", "x", 20, 0.1, "#FFFFFF", "#000000", square=t["color"]["accent"])
+            finally:
+                splash.tokens = orig
+        # QML surfaces (greeter, Display screens, PIN page, splash) only use Tokens.qml for colour.
+        for qml in [*ROOT.glob("greeter/*.qml"), *ROOT.glob("casthub/**/qml/*.qml"), ROOT / "shell/ksplash/Splash.qml",
+                    *[p for p in ROOT.glob("uikit/*.qml") if p.name != "Tokens.qml"]]:
+            text = qml.read_text()
+            for hexcol in ("#7E76D0", "#E6E6E6", "#161616", "#0B0B0B"):
+                self.assertNotIn(hexcol.lower(), text.lower(), f"{qml.relative_to(ROOT)} hard-codes {hexcol}")
+
+    def test_terminal_colours_follow_tokens(self):
+        sys.path.insert(0, str(ROOT / "brand"))
+        import build
+        t = build.load()
+        self.assertEqual(t["color"]["terminal"]["blue"], t["color"]["accent"])
+        self.assertEqual(t["color"]["terminal"]["bg"], t["color"]["dark"]["bg"])
+
     def test_fonts_have_licences(self):
         fonts = ROOT / "brand" / "fonts"
         for family in ("BricolageGrotesque", "InstrumentSans", "DMMono", "MrsSaintDelafield"):

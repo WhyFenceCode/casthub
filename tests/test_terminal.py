@@ -1,6 +1,7 @@
 """Terminal status chips (system/profile.d/casthub-terminal.sh): ink on pastel, only in Cast Hub Konsole."""
 
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -34,8 +35,9 @@ class TestTerminal(unittest.TestCase):
         self.assertEqual(run("type casthub_chip >/dev/null 2>&1 && echo on || echo off", casthub=False).strip(), "off")
 
     def test_ansi_slots_are_the_status_pastels(self):
-        import tomllib
-        t = tomllib.loads((ROOT / "brand" / "tokens.toml").read_text())
+        sys.path.insert(0, str(ROOT / "brand"))
+        import build
+        t = build.load()
         term = t["color"]["terminal"]
         c = t["color"]
         self.assertEqual((term["red"], term["yellow"], term["green"], term["black"]),

@@ -44,18 +44,19 @@ well = "#242424"      # file tiles (design page 11)
 
 [color.terminal]
 # The terminal is always dark, whatever the OS theme (design page 7). ANSI colours
-# are not in the mockups: pastel, to match the status colours.
-bg = "#161616"
-fg = "#E6E6E6"
-muted = "#A0A0A0"
-black = "#0B0B0B"
-red = "#F2A29D"
-green = "#9DD3B0"
-yellow = "#EDCF8E"
-blue = "#7E76D0"      # accent
+# are not in the mockups: pastel, to match the status colours. A value without "#" names
+# another token, so changing that token changes the terminal too.
+bg = "dark.bg"
+fg = "light.bg"
+muted = "dark.muted"
+black = "on_status"
+red = "error"
+green = "success"
+yellow = "warning"
+blue = "accent"
 magenta = "#C2BBF0"
 cyan = "#9CCFD8"
-white = "#E6E6E6"
+white = "light.bg"
 
 [font]
 display = "Bricolage Grotesque"   # wordmark, clock, headings
@@ -111,6 +112,52 @@ size = 9.2
 weight = 400
 tracking = 0.11
 upper = true
+
+# Display mode screens (design pages 12-13) are drawn on their own frame: 1080 x 633,
+# margin 30, the same 12 columns. Sizes below are in that frame's pixels (measured).
+[display]
+width = 1080
+height = 633
+margin = 30
+gutter = 18
+
+[type.dclock]
+family = "display"
+size = 262          # digits 178 px tall
+weight = 800
+width = 78
+tracking = -0.03
+
+[type.ddate]
+family = "display"
+size = 56           # caps 37 px tall
+weight = 800
+width = 84
+tracking = -0.02
+upper = true
+
+[type.dplace]
+family = "text"
+size = 30
+weight = 400
+
+[type.dbody]
+family = "text"
+size = 14.5
+weight = 400
+
+[type.dlabel]
+family = "mono"
+size = 11.2
+weight = 400
+tracking = 0.15
+upper = true
+
+[type.dnum]
+family = "mono"
+size = 9.5
+weight = 400
+tracking = 0.06
 
 [radius]
 pill = 999

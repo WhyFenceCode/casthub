@@ -9,6 +9,10 @@ QtObject {
     readonly property int gridColumns: 12
     readonly property real gridMargin: 42
     readonly property real gridGutter: 21.6
+    readonly property real displayWidth: 1080
+    readonly property real displayHeight: 633
+    readonly property real displayMargin: 30
+    readonly property real displayGutter: 18
 
     readonly property color accent: "#7E76D0"
     readonly property color success: "#9DD3B0"
@@ -35,6 +39,12 @@ QtObject {
     readonly property var small: ({ family: "Instrument Sans", size: 9.6, weight: 400, width: 100, tracking: 0, upper: false })
     readonly property var name: ({ family: "Instrument Sans", size: 12.4, weight: 600, width: 100, tracking: 0, upper: false })
     readonly property var label: ({ family: "DM Mono", size: 9.2, weight: 400, width: 100, tracking: 0.11, upper: true })
+    readonly property var dclock: ({ family: "Bricolage Grotesque", size: 262, weight: 800, width: 78, tracking: -0.03, upper: false })
+    readonly property var ddate: ({ family: "Bricolage Grotesque", size: 56, weight: 800, width: 84, tracking: -0.02, upper: true })
+    readonly property var dplace: ({ family: "Instrument Sans", size: 30, weight: 400, width: 100, tracking: 0, upper: false })
+    readonly property var dbody: ({ family: "Instrument Sans", size: 14.5, weight: 400, width: 100, tracking: 0, upper: false })
+    readonly property var dlabel: ({ family: "DM Mono", size: 11.2, weight: 400, width: 100, tracking: 0.15, upper: true })
+    readonly property var dnum: ({ family: "DM Mono", size: 9.5, weight: 400, width: 100, tracking: 0.06, upper: false })
 
     readonly property real radiusPill: 999
     readonly property real radiusPanel: 6

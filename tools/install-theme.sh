@@ -7,7 +7,7 @@
 #
 # Changes: snapshot of / · /usr/share/fonts/casthub · /usr/share/sddm/themes/casthub
 #   · /usr/share/color-schemes/CastHub*.colors · /usr/share/plasma/look-and-feel/org.casthub.*
-#   · /usr/share/wallpapers/CastHub · /usr/share/konsole/CastHub* · /etc/profile.d/casthub-terminal.sh
+#   · /usr/lib/casthub + /usr/libexec/casthub (Display UI) · /usr/share/wallpapers/CastHub · /usr/share/konsole/CastHub* · /etc/profile.d/casthub-terminal.sh
 #   · /etc/xdg/kdeglobals and /etc/xdg/konsolerc (keys set with kwriteconfig6; backups kept)
 # Users who never picked a global theme get Cast Hub at their next login. Anyone who
 # picked one in System Settings keeps it. Undo: docs/RECOVERY.md, "Desktop theme".
@@ -19,6 +19,8 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 step() { printf '\n== %s\n' "$*"; }
 # shellcheck source=lib/greeter.sh
 . "$repo/tools/lib/greeter.sh"
+# shellcheck source=lib/display.sh
+. "$repo/tools/lib/display.sh"
 
 step "Snapshot"
 "$repo/tools/snapshot.sh" pre-theme
@@ -42,6 +44,9 @@ fc-cache -f /usr/share/fonts/casthub >/dev/null
 
 step "Login screen"
 install_greeter "$repo"
+
+step "Display screens and PIN page"
+install_display "$repo"
 
 step "Plasma colour schemes"
 install -m644 "$repo"/shell/colors/CastHub*.colors /usr/share/color-schemes/
@@ -88,7 +93,7 @@ kw konsolerc "Desktop Entry" DefaultProfile CastHub.profile
 chmod 644 /etc/xdg/kdeglobals /etc/xdg/konsolerc
 cat /etc/xdg/kdeglobals
 
-restorecon -R /usr/share/fonts/casthub /usr/share/sddm/themes/casthub /usr/share/color-schemes \
+restorecon -R /usr/lib/casthub /usr/libexec/casthub /etc/casthub /usr/share/casthub /usr/share/fonts/casthub /usr/share/sddm/themes/casthub /usr/share/color-schemes \
   /usr/share/plasma/look-and-feel /usr/share/wallpapers/CastHub /usr/share/konsole /etc/xdg 2>/dev/null || true
 
 if [ "${1:-}" = "--splash" ]; then

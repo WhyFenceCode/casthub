@@ -20,6 +20,11 @@ Nov 7, 2026 · Torsten
 | D9 | Miracast | M2 connection tests are done (owner). We build our own Python Miracast receiver; lazycast is a reference only. |
 | D10 | LAN switch page | Protected by the switcher PIN. |
 | D11 | Repo | Public on GitHub. `docs/SPEC.pdf` is never committed (kept in `local/`); this Markdown file is the tracked spec. Commits are authored by the owner with Claude as co-author. |
+| D12 | Status colours | Slightly pastel success/warning/error. Shown as chips: ink text on the pastel. Where status must be *text* (Plasma), it is deepened just enough for 4.5:1. The terminal shows status the same way (ink on pastel). |
+| D13 | Display QR | The QR code on the Display idle screen joins the Cast Hub hotspot and is shown only when the hotspot is on. |
+| D14 | Desktop build | M8 themes Plasma (light/dark) for every user. M9 builds the custom shell on top of Plasma (KWin, Wi-Fi, notifications and lock screen stay Plasma's). Every control must either have a place in the mockup layout or live behind a settings window; if that turns out impossible on Plasma, switch to a fully custom shell. |
+| D15 | Console and Files tabs | Real Konsole and Dolphin windows, styled to match and docked into the panel beside Today. |
+| D16 | Firmware logo | The coreboot logo shown before Linux starts stays for now (changing it needs a firmware flash); to be revisited. |
 
 ---
 

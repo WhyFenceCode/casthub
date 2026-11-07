@@ -24,7 +24,14 @@ ssid = "<ssid>"
 # The passphrase is NOT stored here; it lives in NetworkManager's system connection.
 
 [switcher]
-pin = ""                         # set at install; replaced by pin_hash on save
+# Set with `casthub-pin` (writes pin_hash only; a plain `pin` here is refused).
+pin_hash = ""
+
+[display]
+theme = "auto"                   # auto (light 07:00-19:00) | light | dark
+location = "<city>, <region>"    # shown on the idle screen
+latitude = 0.0                   # optional; shown under the status line
+longitude = 0.0
 
 [[screen]]                       # optional pinning; otherwise by plug order
 output = "eDP-1"

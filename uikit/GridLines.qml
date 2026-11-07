@@ -7,8 +7,9 @@ Item {
     property Tokens tok
     anchors.fill: parent
 
-    readonly property real margin: tok.gridMargin * u
-    readonly property real gutter: tok.gridGutter * u
+    // Defaults are the main design frame; Display screens pass their own (tokens [display]).
+    property real margin: tok.gridMargin * u
+    property real gutter: tok.gridGutter * u
     readonly property real col: (width - 2 * margin - (tok.gridColumns - 1) * gutter) / tok.gridColumns
     function colX(i) { return margin + i * (col + gutter) }
 

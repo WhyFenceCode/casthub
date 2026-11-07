@@ -8,7 +8,7 @@
 # What it changes:
 #   snapshot of / (tools/snapshot.sh) · packages: sddm sddm-wayland-plasma sway
 #   /usr/share/fonts/casthub · /usr/share/sddm/themes/casthub · /usr/share/casthub
-#   /usr/libexec/casthub · /usr/lib/systemd/user/casthub-*.target
+#   /usr/libexec/casthub · /usr/lib/casthub · /etc/casthub · /usr/lib/systemd/user/casthub-*.target
 #   /usr/share/konsole/CastHub* · /etc/sddm.conf.d/casthub.conf
 #   user `casthub` + group `nopasswdlogin` · one line in /etc/pam.d/sddm
 set -euo pipefail
@@ -61,14 +61,12 @@ for m in workstation display console; do
   install -Dm644 "$repo/modes/$m/casthub-$m.target" "/usr/lib/systemd/user/casthub-$m.target"
 done
 install -Dm755 "$repo/modes/casthub-session" /usr/libexec/casthub/casthub-session
-install -Dm755 "$repo/modes/display/casthub-leave" /usr/libexec/casthub/casthub-leave
 install -Dm755 "$repo/modes/workstation/casthub-appearance" /usr/libexec/casthub/casthub-appearance
 install -Dm644 "$repo/modes/workstation/casthub-appearance.service" /usr/lib/systemd/user/casthub-appearance.service
 install -Dm644 "$repo/modes/workstation/casthub-appearance.path" /usr/lib/systemd/user/casthub-appearance.path
 # Per-user light/dark for the login screen: anyone may add their own file, nobody can
 # list, replace or delete another user's (sticky bit).
 install -d -m 1733 -o root -g root /var/lib/casthub/appearance
-install -Dm644 "$repo/modes/display/sway.conf" /usr/share/casthub/display/sway.conf
 install -Dm644 "$repo/modes/console/sway.conf" /usr/share/casthub/console/sway.conf
 install -Dm644 "$repo/modes/console/CastHubConsole.profile" /usr/share/konsole/CastHubConsole.profile
 install -Dm644 "$repo/modes/console/CastHub.colorscheme" /usr/share/konsole/CastHub.colorscheme
@@ -87,6 +85,11 @@ passwd --lock casthub >/dev/null          # no password at all; only the PAM rul
 usermod -aG nopasswdlogin casthub
 id -nG casthub | grep -qw wheel && { echo "ERROR: casthub must not be in wheel" >&2; exit 1; }
 
+step "Display UI"
+# shellcheck source=lib/display.sh
+. "$repo/tools/lib/display.sh"
+install_display "$repo"
+
 step "PAM: passwordless login for casthub only, via SDDM only"
 pam=/etc/pam.d/sddm
 # PAM has no end-of-line comments, so the marker is its own line above the rule.
@@ -98,7 +101,7 @@ if ! grep -qF "$marker" "$pam"; then
 fi
 grep -n 'casthub' "$pam"
 
-restorecon -R /usr/share/sddm/themes/casthub /usr/share/casthub /usr/libexec/casthub /usr/share/fonts/casthub /etc/sddm.conf.d /var/lib/casthub 2>/dev/null || true
+restorecon -R /usr/share/sddm/themes/casthub /usr/share/casthub /usr/libexec/casthub /usr/lib/casthub /etc/casthub /usr/share/fonts/casthub /etc/sddm.conf.d /var/lib/casthub 2>/dev/null || true
 
 step "Done"
 if [ "$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null)" = /usr/lib/systemd/system/sddm.service ]; then

@@ -90,3 +90,15 @@ joins the hotspot.
   `exit N` chip before the prompt; `casthub_chip error|warn|ok|info TEXT` for scripts; gcc
   diagnostics as chips. Only in the Cast Hub Konsole profiles (`system/profile.d/casthub-terminal.sh`).
 - Fixed: `install-modes.sh` did not copy `uikit/` with the greeter (`tools/lib/greeter.sh`).
+- Owner test after reboot: works; login splash was caught half-drawn (fade-in + stage-driven
+  progress bar, and Plasma closes the splash before the last stage). Now drawn complete from
+  the first frame, no progress bar. The rabbit before Linux is the firmware logo (D16: later).
+- Display screens (design pages 12-13, own 1080x633 frame, measured to within ~2 px):
+  `casthub/ui/` idle / connecting / streaming + busy toast, one full-screen window per output,
+  hotspot QR only when the hotspot service has written its join code (D13); the UI never
+  holds the Wi-Fi passphrase. `casthub/config.py` (validated TOML) arrives early from M3.
+- PIN page (`casthub/switcher/`): Ctrl+Alt+Esc → PIN dots → Return to login / Restart / Shut
+  down. scrypt hash only (`casthub-pin`, typed by the owner), 5 tries then 60 s lockout. If
+  the UI is not running, Ctrl+Alt+Esc still leaves (to the login screen, which needs a password).
+- Terminal colours now reference the colour tokens; test: one accent edit changes every
+  generated surface and no QML hard-codes a brand colour.

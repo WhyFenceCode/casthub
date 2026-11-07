@@ -1,0 +1,3 @@
+#!/bin/sh
+# Set the Display-mode PIN (prompts; stores only a hash). Run: sudo /usr/libexec/casthub/casthub-pin
+exec python3 -I -c 'import sys; sys.path.insert(0, "/usr/lib/casthub"); from casthub.switcher.setpin import main; raise SystemExit(main())'

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Start the Display-mode UI (casthub/ui/app.py), installed under /usr/lib/casthub.
+exec python3 -I -c 'import sys; sys.path.insert(0, "/usr/lib/casthub"); from casthub.ui.app import main; raise SystemExit(main())' "$@"
