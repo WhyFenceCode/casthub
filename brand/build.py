@@ -60,6 +60,7 @@ def qml_tokens(t: dict) -> str:
     ]
     for k in ("accent", "success", "warning", "error", "on_status"):
         lines.append(f'    readonly property color {k.replace("_s", "S")}: "{c[k]}"')
+    lines.append(f'    readonly property color bootBg: "{t["boot"]["bg"]}"     // boot splash, lock screen')
     for k in light:
         lines.append(f'    readonly property color {k}: dark ? "{dark[k]}" : "{light[k]}"')
     lines.append("")

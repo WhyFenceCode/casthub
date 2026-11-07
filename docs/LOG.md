@@ -150,3 +150,9 @@ agenda hidden when no calendar is set up unless it is a holiday; thin bar everyw
   - Boot splash: the signature could show cut off when the screen changed size during boot (the
     real graphics driver replacing the firmware framebuffer) or a second screen appeared; the
     Plymouth script now re-centres and scales to the smallest screen whenever the screens change.
+- Owner check, round 4: the lock / wake-from-sleep screen is ours now
+  (`contents/lockscreen/LockScreen.qml` in the shell package): 24-hour time and date on the
+  left, the signature on two lines on the right (`signature.py --two-lines`, rendered at install),
+  password block and Switch user / Sleep / Unlock in the login screen's style. Unlocking goes
+  through kscreenlocker's authenticator only; tested with `kscreenlocker_greet --testing`
+  (which also showed a load error falls back to KDE's built-in locker, not a locked-out screen).

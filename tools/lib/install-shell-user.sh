@@ -11,6 +11,9 @@ for v in light dark; do
 done
 copy "$repo/shell/plasma-shell/org.casthub.desktop" "$dst/plasma/shells/org.casthub.desktop"
 copy "$repo/uikit" "$dst/plasma/shells/org.casthub.desktop/contents/logout/uikit"
+copy "$repo/uikit" "$dst/plasma/shells/org.casthub.desktop/contents/lockscreen/uikit"
+# Two-line signature for the lock screen, rendered from the font (no repo files written).
+python3 -I "$repo/brand/signature.py" --two-lines "$dst/plasma/shells/org.casthub.desktop/contents/lockscreen/signature.png" --height 720 >/dev/null
 for p in "$repo"/shell/plasmoids/*/; do
   id=$(basename "$p")
   copy "$p" "$dst/plasma/plasmoids/$id"

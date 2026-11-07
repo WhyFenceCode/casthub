@@ -198,3 +198,31 @@ class TestSplashLayout(unittest.TestCase):
         self.assertIn("fun layout()", script)
         self.assertIn("Window.GetWidth(0) != global.seen_w", script)
         self.assertIn("Plymouth.SetQuitFunction(quit_callback);", script)
+
+
+class TestLockScreen(unittest.TestCase):
+    QML = SHELL / "plasma-shell" / "org.casthub.desktop" / "contents" / "lockscreen" / "LockScreen.qml"
+
+    def test_unlocks_only_through_the_authenticator(self):
+        qml = self.QML.read_text()
+        self.assertIn("authenticator.respond(password.text)", qml)
+        self.assertIn("authenticator.startAuthenticating()", qml)
+        # Qt.quit() ends the lock; it may only run once PAM said yes.
+        handler = qml[qml.index("function onSucceeded()"):]
+        handler = handler[:handler.index("}")]
+        self.assertIn("Qt.quit()", handler)
+        self.assertEqual(qml.count("Qt.quit()"), 1)
+
+    def test_kscreenlocker_magic_names(self):
+        qml = self.QML.read_text()
+        for name in ("property bool viewVisible", "signal clearPassword()", "property string notification"):
+            self.assertIn(name, qml)
+
+    def test_two_line_signature_renders(self):
+        import tempfile
+
+        import signature
+        with tempfile.TemporaryDirectory() as d:
+            w, h = signature.write_two_lines_png(Path(d) / "s.png", 120)
+        self.assertEqual(h, 120)
+        self.assertLess(w, 2 * h)       # two lines: taller than the one-line signature's 1:3

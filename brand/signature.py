@@ -235,6 +235,46 @@ def bbox(L: list[Letter], fl: list[Point], pad: float = 6) -> tuple[float, float
             max(p[0] for p in pts) + pad, max(p[1] for p in pts) + pad)
 
 
+def two_lines(indent: float = 0.24, leading: float = 0.92) -> tuple[list[Letter], list[Point], tuple]:
+    """The signature on two lines: first name above, surname below and indented, flourish
+    under the surname (lock screen, SPEC D22). Returns (letters, flourish, bbox)."""
+    L, fl = letters(), flourish()
+    first_len = len(TEXT.split(" ")[0])
+    a, b = L[:first_len], L[first_len:]
+
+    def box(ls):
+        pts = [p for le in ls for c in le.contours for p in c]
+        return min(p[0] for p in pts), min(p[1] for p in pts), max(p[0] for p in pts), max(p[1] for p in pts)
+
+    ax0, ay0, ax1, ay1 = box(a)
+    bx0, by0, bx1, by1 = box(b)
+    dx = ax0 + indent * (ax1 - ax0) - bx0
+    dy = leading * (ay1 - ay0)
+    moved = [Letter([[(x + dx, y + dy) for x, y in c] for c in le.contours], le.length) for le in b]
+    # Flourish: squeezed under the surname.
+    fx0, fx1 = min(p[0] for p in fl), max(p[0] for p in fl)
+    nx0, nx1 = bx0 + dx - 0.04 * (bx1 - bx0), bx1 + dx + 0.06 * (bx1 - bx0)
+    k = (nx1 - nx0) / (fx1 - fx0)
+    fy = max(p[1] for p in fl)
+    fl2 = [(nx0 + (x - fx0) * k, y + dy + (by1 - fy) * 0.0) for x, y in fl]
+    allL = a + moved
+    return allL, fl2, bbox(allL, fl2)
+
+
+def write_two_lines_png(path: Path, height: int) -> tuple[int, int]:
+    """Finished two-line signature, ink and accent on transparent, `height` px tall."""
+    L, fl, (x0, y0, x1, y1) = two_lines()
+    k = height / (y1 - y0)
+    w = math.ceil((x1 - x0) * k)
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, height)
+    ctx = cairo.Context(surf)
+    ctx.scale(k, k)
+    ctx.translate(-x0, -y0)
+    draw(ctx, L, fl, duration(len(L)) + 1, colours())
+    surf.write_to_png(str(path))
+    return w, height
+
+
 def write_svg(path: Path) -> None:
     L, fl, col = letters(), flourish(), colours()
     x0, y0, x1, y1 = bbox(L, fl)
@@ -276,12 +316,15 @@ def main() -> int:
     ap.add_argument("--fps", type=int, default=25)
     ap.add_argument("--at", type=float, help="with --png: render a single moment (seconds)")
     ap.add_argument("--png", type=Path)
+    ap.add_argument("--two-lines", type=Path, help="write the finished two-line signature PNG (lock screen)")
     a = ap.parse_args()
     if a.svg:
         write_svg(a.svg)
         print(f"wrote {a.svg}")
     if a.frames:
         print(json.dumps(write_frames(a.frames, a.height, a.width, a.fps)))
+    if a.two_lines:
+        print(write_two_lines_png(a.two_lines, a.height))
     if a.png:
         L, fl, col = letters(), flourish(), colours()
         u = a.height / 675

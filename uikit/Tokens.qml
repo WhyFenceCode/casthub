@@ -25,6 +25,7 @@ QtObject {
     readonly property color warning: "#EDCF8E"
     readonly property color error: "#F2A29D"
     readonly property color onStatus: "#0B0B0B"
+    readonly property color bootBg: "#000000"     // boot splash, lock screen
     readonly property color bg: dark ? "#161616" : "#E6E6E6"
     readonly property color surface: dark ? "#1C1C1C" : "#EDEDED"
     readonly property color fg: dark ? "#FFFFFF" : "#0B0B0B"
