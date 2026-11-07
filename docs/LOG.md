@@ -21,7 +21,7 @@ Connection tests passed. Decision: build our own Python receiver (SPEC D9).
 Fedora 45 ships Plasma Login Manager, whose greeter is compiled in and has no theme support.
 Decision: switch to SDDM in M7 (SPEC D6).
 
-## M7: Login screen and modes (in progress), 2026-11-07
+## M7: Login screen and modes (done), 2026-11-07
 
 Built (repo):
 - `greeter/`: SDDM Qt 6 theme matching design pages 3–5 (light + dark, auto by time of day).
@@ -66,3 +66,8 @@ Fixes from that test:
 - `brand/splash.py` generates frames for the real screen at install time; text is pre-rendered,
   so the initramfs needs no fonts. `tools/install-splash.sh` backs up the initramfs first.
 - Not changed: the firmware's own logo, shown for a moment before Linux starts.
+
+## M7 accepted, 2026-11-07
+
+Owner confirmed after reboot: signature boot splash, light login screen following the user's
+setting, inline password errors, centred footer. M7 done.
