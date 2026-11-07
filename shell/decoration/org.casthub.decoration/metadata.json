@@ -1,0 +1,11 @@
+{
+    "KPackageStructure": "KWin/Decoration",
+    "KPlugin": {
+        "Authors": [{ "Name": "Cast Hub" }],
+        "Description": "Cast Hub window frame (design pages 10-11): mono title, thin buttons, rounded outline",
+        "Id": "org.casthub.decoration",
+        "License": "GPL-2.0-or-later",
+        "Name": "Cast Hub"
+    },
+    "X-KWin-Config-TranslationDomain": "kwin"
+}

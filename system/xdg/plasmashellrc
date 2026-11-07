@@ -1,0 +1,4 @@
+# Cast Hub desktop (SPEC D17): Plasma loads the org.casthub.desktop shell package.
+# Merged into /etc/xdg/plasmashellrc by tools/install-theme.sh. Undo: docs/RECOVERY.md.
+[Shell]
+ShellPackage=org.casthub.desktop

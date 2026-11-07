@@ -159,6 +159,53 @@ size = 9.5
 weight = 400
 tracking = 0.06
 
+# Workstation desktop (M9), in 1080 x 675 frame units (u = screen height / 675).
+# One thin top bar everywhere (D20, design page 10); the Console/Files dashboard (page 7)
+# moves up by the difference (47 - 27). The app panel fills grid columns 5-12.
+[shell]
+bar = 27              # top bar height (rule at the bottom)
+bar_margin = 15
+panel_top = 59        # 79 on page 7, minus 20
+panel_header = 40     # header strip above the docked window ("CONSOLE · ZSH")
+panel_bottom = 639
+panel_first_col = 4   # 0-based grid column where the panel starts
+
+[type.barmark]
+family = "display"
+size = 11.1
+weight = 800
+width = 87.5
+tracking = -0.01
+upper = true
+
+[type.barlabel]
+family = "mono"
+size = 8.4
+weight = 400
+tracking = 0.12
+upper = true
+
+[type.today]
+family = "display"
+size = 125
+weight = 800
+width = 75
+tracking = -0.02
+
+[type.faint]
+family = "display"
+size = 255
+weight = 800
+width = 75
+tracking = -0.02
+
+[type.tile]
+family = "mono"
+size = 7
+weight = 400
+tracking = 0.08
+upper = true
+
 [radius]
 pill = 999
 panel = 6           # GUESS: window/panel corners on the desktop mockups

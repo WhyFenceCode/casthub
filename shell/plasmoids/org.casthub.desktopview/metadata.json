@@ -1,0 +1,14 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "Cast Hub" }],
+        "Category": "",
+        "Description": "Cast Hub desktop layer: Today panel on Console/Files, desktop icons on Desktop",
+        "Id": "org.casthub.desktopview",
+        "License": "GPL-2.0-or-later",
+        "Name": "Cast Hub Desktop"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-ContainmentType": "Desktop",
+    "X-Plasma-NoDisplay": true
+}

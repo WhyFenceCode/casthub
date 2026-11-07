@@ -1,0 +1,5 @@
+# Konsole defaults for Cast Hub (SPEC D17): no menu bar; the panel header and the top bar
+# take its place. The docked console is also started with --hide-toolbars (desktop view).
+# Merged into /etc/xdg/konsolerc by tools/install-theme.sh.
+[KonsoleWindow]
+ShowMenuBarByDefault=false

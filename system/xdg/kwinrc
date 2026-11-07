@@ -1,0 +1,13 @@
+# Cast Hub window manager defaults (SPEC D17). Merged into /etc/xdg/kwinrc by
+# tools/install-theme.sh. The decoration is also in the global theme defaults.
+[Plugins]
+org.casthub.viewsEnabled=true
+slideEnabled=false
+fadedesktopEnabled=true
+
+[org.kde.kdecoration2]
+library=org.kde.kwin.aurorae
+theme=org.casthub.decoration
+
+[ModifierOnlyShortcuts]
+Meta=org.kde.krunner,/App,,toggleDisplay

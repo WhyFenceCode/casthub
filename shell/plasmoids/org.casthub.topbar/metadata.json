@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "Cast Hub" }],
+        "Category": "Windows and Tasks",
+        "Description": "Cast Hub top bar: wordmark, Console / Files / Desktop tabs, active window",
+        "Id": "org.casthub.topbar",
+        "License": "GPL-2.0-or-later",
+        "Name": "Cast Hub Top Bar"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

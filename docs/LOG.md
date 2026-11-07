@@ -103,3 +103,22 @@ joins the hotspot.
   page only (D10).
 - Terminal colours now reference the colour tokens; test: one accent edit changes every
   generated surface and no QML hard-codes a brand colour.
+
+## M9: desktop shell (in progress), 2026-11-07
+
+Owner answers: nothing done yet; Plasma's tray kept if it does not stand out (else text only);
+agenda hidden when no calendar is set up unless it is a holiday; thin bar everywhere.
+- Built on Plasma (D17): shell package `org.casthub.desktop` (selected in
+  `/etc/xdg/plasmashellrc`), desktop layer `org.casthub.desktopview` (Today panel, agenda,
+  meters, app panel frame; desktop tiles, faint date, footer), top-bar widgets
+  (`org.casthub.topbar`, `org.casthub.clock`) beside Plasma's system tray, a transparent
+  Plasma theme, the QML window decoration `org.casthub.decoration`, and the KWin script
+  `org.casthub.views` (three virtual desktops; Konsole/Dolphin docked into the panel frame).
+- Panel geometry comes from `[shell]` tokens into both the desktop layer and the KWin script.
+- Dolphin resizes itself after it first appears and KWin does not resend an unchanged size
+  request, so the script re-fits on buffer changes and nudges the request.
+- `tools/preview_shell.sh`: headless Plasma (virtual KWin) with system/xdg standing in for
+  /etc/xdg; screenshots go to `local/previews/`.
+- Tray: monochrome symbolic icons in the bar's text colour; kept (D18).
+- `tools/adopt-desktop.sh`: for accounts that logged in before (Plasma only rebuilds theme
+  defaults when the theme name changes).

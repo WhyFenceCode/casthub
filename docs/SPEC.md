@@ -25,6 +25,10 @@ Nov 7, 2026 · Torsten
 | D14 | Desktop build | M8 themes Plasma (light/dark) for every user. M9 builds the custom shell on top of Plasma (KWin, Wi-Fi, notifications and lock screen stay Plasma's). Every control must either have a place in the mockup layout or live behind a settings window; if that turns out impossible on Plasma, switch to a fully custom shell. |
 | D15 | Console and Files tabs | Real Konsole and Dolphin windows, styled to match and docked into the panel beside Today. |
 | D16 | Firmware logo | The coreboot logo shown before Linux starts stays for now (changing it needs a firmware flash); to be revisited. |
+| D17 | Desktop architecture (M9) | A Cast Hub Plasma shell package (`org.casthub.desktop`, falls back to Plasma's own) with its own desktop layer, top-bar widgets, a KWin script and a QML window decoration. The three tabs are three virtual desktops (Console, Files, Desktop); Konsole and Dolphin are docked on the first two. Plasma keeps the old layout in its own file, so switching back is one command. |
+| D18 | Status area | Plasma's system tray stays (Wi-Fi, sound, battery, notifications must keep working) but is styled so it reads as part of the top bar. If that can't be made seamless, fall back to text only. |
+| D19 | Agenda | From the KDE calendars (Akonadi: Merkuro / KOrganizer accounts) plus public holidays. Hidden when there is nothing to show, but a holiday always shows. |
+| D20 | Top bar height | One thin bar (the Desktop-view height, design page 10) on all three tabs. |
 
 ---
 

@@ -1,0 +1,11 @@
+{
+    "KPackageStructure": "Plasma/Theme",
+    "KPlugin": {
+        "Authors": [{ "Name": "Cast Hub" }],
+        "Description": "Cast Hub: transparent top bar with a single rule; everything else from the default theme, coloured by the colour scheme",
+        "Id": "casthub",
+        "License": "GPL-2.0-or-later",
+        "Name": "Cast Hub"
+    },
+    "X-Plasma-API": "5.0"
+}

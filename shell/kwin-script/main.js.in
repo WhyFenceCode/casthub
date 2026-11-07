@@ -1,0 +1,130 @@
+/*
+ * Cast Hub views (SPEC D17): the three top-bar tabs are three virtual desktops.
+ *   1 Console - one Konsole window docked into the dashboard panel (design page 7)
+ *   2 Files   - one Dolphin window docked the same way (page 8)
+ *   3 Desktop - every other window, free-floating (page 10)
+ * Any other normal window that appears on Console/Files is moved to Desktop and shown there.
+ * Shortcuts Meta+1/2/3 (also invoked by the top bar through kglobalaccel).
+ *
+ * Geometry (the placeholder values below) comes from brand/tokens.toml [shell] via brand/build.py, so the
+ * panel frame drawn by the desktop layer and the docked window always line up.
+ */
+
+const FRAME_H = @FRAME_H@;
+const MARGIN = @MARGIN@;
+const GUTTER = @GUTTER@;
+const COLUMNS = @COLUMNS@;
+const PANEL_TOP = @PANEL_TOP@;
+const PANEL_HEADER = @PANEL_HEADER@;
+const PANEL_BOTTOM = @PANEL_BOTTOM@;
+const PANEL_FIRST_COL = @PANEL_FIRST_COL@;
+
+const VIEWS = [
+    { name: "Console", app: "org.kde.konsole" },
+    { name: "Files", app: "org.kde.dolphin" },
+    { name: "Desktop", app: "" },
+];
+const docked = [null, null];      // window docked on Console, Files
+let placing = false;              // true while we move a window ourselves
+
+function log(msg) { print("casthub-views: " + msg); }
+
+function ensureDesktops() {
+    while (workspace.desktops.length < VIEWS.length) {
+        workspace.createDesktop(workspace.desktops.length, VIEWS[workspace.desktops.length].name);
+    }
+    for (let i = 0; i < VIEWS.length; i++) {
+        if (workspace.desktops[i].name !== VIEWS[i].name) workspace.desktops[i].name = VIEWS[i].name;
+    }
+}
+
+function viewOf(desktop) {
+    for (let i = 0; i < VIEWS.length; i++) if (workspace.desktops[i] === desktop) return i;
+    return -1;
+}
+
+// The docked window's rectangle: grid columns PANEL_FIRST_COL.. on the screen, below the
+// panel header. Same formula as uikit GridLines / the desktop layer.
+function panelRect(output) {
+    const s = workspace.clientArea(KWin.FullScreenArea, output, workspace.currentDesktop);
+    const u = s.height / FRAME_H;
+    const margin = MARGIN * u, gutter = GUTTER * u;
+    const col = (s.width - 2 * margin - (COLUMNS - 1) * gutter) / COLUMNS;
+    const x = s.x + margin + PANEL_FIRST_COL * (col + gutter);
+    const y = s.y + (PANEL_TOP + PANEL_HEADER) * u;
+    const right = s.x + s.width - margin;
+    const bottom = s.y + PANEL_BOTTOM * u;
+    // 1 px inside the panel's outline on every side
+    return { x: Math.round(x) + 1, y: Math.round(y) + 1, width: Math.round(right - x) - 2, height: Math.round(bottom - y) - 2 };
+}
+
+function manageable(w) {
+    return w && w.normalWindow && !w.transient && !w.specialWindow && !w.skipTaskbar;
+}
+
+function place(w, i) {
+    placing = true;
+    w.desktops = [workspace.desktops[i]];
+    w.noBorder = true;
+    if (w.fullScreen) w.fullScreen = false;
+    w.setMaximize(false, false);
+    const r = panelRect(w.output), g = w.frameGeometry;
+    if (g.x !== r.x || g.y !== r.y || g.width !== r.width || g.height !== r.height) {
+        // KWin only sends a new size when the request changes. A client that resized itself
+        // (Dolphin restoring its saved size) leaves the old request standing, so nudge first.
+        w.frameGeometry = { x: r.x, y: r.y, width: r.width, height: r.height - 1 };
+        w.frameGeometry = r;
+    }
+    placing = false;
+}
+
+function dock(w, i) {
+    docked[i] = w;
+    log("dock " + w.resourceClass + " on " + VIEWS[i].name);
+    place(w, i);
+    // Some apps (Dolphin) resize themselves right after they first appear; any change to the
+    // window or its buffer puts it back. place() does nothing when it already fits.
+    const refit = () => { if (!placing && docked[i] === w) place(w, i); };
+    w.frameGeometryChanged.connect(refit);
+    w.bufferGeometryChanged.connect(refit);
+    w.desktopsChanged.connect(refit);
+    w.closed.connect(() => { if (docked[i] === w) { docked[i] = null; log(VIEWS[i].name + " window closed"); } });
+}
+
+function sendToDesktopView(w, show) {
+    placing = true;
+    w.desktops = [workspace.desktops[2]];
+    placing = false;
+    if (show) workspace.currentDesktop = workspace.desktops[2];
+}
+
+function onDockDesktop(w) {
+    return w.desktops.length === 1 && viewOf(w.desktops[0]) >= 0 && viewOf(w.desktops[0]) < 2;
+}
+
+function adopt(w, initial) {
+    if (!manageable(w)) return;
+    for (let i = 0; i < 2; i++) {
+        if (w.resourceClass === VIEWS[i].app && docked[i] === null) { dock(w, i); return; }
+    }
+    if (w.onAllDesktops || onDockDesktop(w)) sendToDesktopView(w, !initial);
+    w.desktopsChanged.connect(() => {
+        if (!placing && docked.indexOf(w) < 0 && onDockDesktop(w)) sendToDesktopView(w, true);
+    });
+}
+
+function show(i) {
+    ensureDesktops();
+    workspace.currentDesktop = workspace.desktops[i];
+    const w = docked[i];
+    if (w) { w.minimized = false; workspace.activeWindow = w; }
+}
+
+ensureDesktops();
+workspace.windowList().forEach((w) => adopt(w, true));
+workspace.windowAdded.connect((w) => adopt(w, false));
+workspace.screensChanged.connect(() => docked.forEach((w, i) => { if (w) place(w, i); }));
+for (let i = 0; i < VIEWS.length; i++) {
+    registerShortcut("CastHub " + VIEWS[i].name, "Cast Hub: show " + VIEWS[i].name, "Meta+" + (i + 1), () => show(i));
+}
+log("ready");

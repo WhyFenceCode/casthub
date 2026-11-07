@@ -55,6 +55,7 @@ def qml_tokens(t: dict) -> str:
         f"    readonly property real displayHeight: {t['display']['height']}",
         f"    readonly property real displayMargin: {t['display']['margin']}",
         f"    readonly property real displayGutter: {t['display']['gutter']}",
+        *[f"    readonly property real shell{k.title().replace('_', '')}: {v}" for k, v in t["shell"].items()],
         "",
     ]
     for k in ("accent", "success", "warning", "error", "on_status"):
@@ -205,17 +206,17 @@ def lnf_metadata(t: dict, variant: str) -> str:
 
 
 def lnf_defaults(t: dict, variant: str) -> str:
-    """What applying the package changes. No [layouts]: panels and widgets are left alone."""
+    """What applying the package changes. Panels come from contents/layouts (Cast Hub shell only)."""
     icons = "breeze-dark" if variant == "dark" else "breeze"
     return "\n".join([
         f"# {HEADER}",
         "[kdeglobals][KDE]", "widgetStyle=Breeze", "",
         "[kdeglobals][General]", f"ColorScheme=CastHub{variant.capitalize()}", "",
         "[kdeglobals][Icons]", f"Theme={icons}", "",
-        "[plasmarc][Theme]", "name=default", "",
+        "[plasmarc][Theme]", "name=casthub", "",
         "[Wallpaper]", "Image=CastHub", "",
         "[kcminputrc][Mouse]", "cursorTheme=breeze_cursors", "",
-        "[kwinrc][org.kde.kdecoration2]", "library=org.kde.breeze", "theme=Breeze", "",
+        "[kwinrc][org.kde.kdecoration2]", "library=org.kde.kwin.aurorae", "theme=org.casthub.decoration", "",
         "[ksplashrc][KSplash]", f"Theme={lnf_id(variant)}", "",
     ])
 
@@ -226,6 +227,25 @@ def lnf_splash(t: dict, variant: str) -> str:
     assert marker in src, "shell/ksplash/Splash.qml lost its @variant line"
     return f"// {HEADER} (from shell/ksplash/Splash.qml)\n" + src.replace(
         marker, f"readonly property bool dark: {str(variant == 'dark').lower()}")
+
+
+def kwin_script(t: dict) -> str:
+    """The KWin views script with the shared desktop geometry filled in from the tokens."""
+    src = (ROOT / "shell" / "kwin-script" / "main.js.in").read_text()
+    g, sh = t["grid"], t["shell"]
+    consts = {
+        "FRAME_H": t["frame"]["height"], "MARGIN": g["margin"], "GUTTER": g["gutter"], "COLUMNS": g["columns"],
+        "PANEL_TOP": sh["panel_top"], "PANEL_HEADER": sh["panel_header"], "PANEL_BOTTOM": sh["panel_bottom"],
+        "PANEL_FIRST_COL": sh["panel_first_col"],
+    }
+    for k, v in consts.items():
+        src = src.replace(f"@{k}@", str(v))
+    assert "@" not in src.split("*/", 1)[-1], "unfilled @CONSTANT@ in main.js.in"
+    return f"// {HEADER} (from shell/kwin-script/main.js.in)\n" + src
+
+
+def lnf_layout(t: dict) -> str:
+    return f"// {HEADER} (from shell/layout.js)\n" + (ROOT / "shell" / "layout.js").read_text()
 
 
 OUTPUTS = {
@@ -239,6 +259,10 @@ for _v in ("light", "dark"):
     OUTPUTS[f"{_d}/metadata.json"] = lambda t, v=_v: lnf_metadata(t, v)
     OUTPUTS[f"{_d}/contents/defaults"] = lambda t, v=_v: lnf_defaults(t, v)
     OUTPUTS[f"{_d}/contents/splash/Splash.qml"] = lambda t, v=_v: lnf_splash(t, v)
+    OUTPUTS[f"{_d}/contents/layouts/org.casthub.desktop-layout.js"] = lnf_layout
+OUTPUTS["shell/kwin-script/org.casthub.views/contents/code/main.js"] = kwin_script
+# The shell's own first-run layout, used when the user's global theme has none for this shell.
+OUTPUTS["shell/plasma-shell/org.casthub.desktop/contents/layout.js"] = lnf_layout
 
 
 def main() -> int:

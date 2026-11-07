@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "Cast Hub" }],
+        "Category": "Date and Time",
+        "Description": "Cast Hub clock: accent dot and 24-hour time (design page 10)",
+        "Id": "org.casthub.clock",
+        "License": "GPL-2.0-or-later",
+        "Name": "Cast Hub Clock"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

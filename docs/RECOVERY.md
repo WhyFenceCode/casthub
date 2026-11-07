@@ -30,6 +30,21 @@ Then log out and in. The installed files (`/usr/share/plasma/look-and-feel/org.c
 `/usr/share/color-schemes/CastHub*`, `/usr/share/wallpapers/CastHub`) are harmless left in
 place. One user only: System Settings → Global Theme → Fedora.
 
+## Desktop (M9: top bar, three views, window frames)
+
+Back to Plasma's own desktop for everyone, keeping the Cast Hub colours:
+
+    sudo kwriteconfig6 --file /etc/xdg/plasmashellrc --group Shell --key ShellPackage --delete
+    sudo kwriteconfig6 --file /etc/xdg/kwinrc --group Plugins --key org.casthub.viewsEnabled false
+    sudo kwriteconfig6 --file /etc/xdg/kwinrc --group org.kde.kdecoration2 --key library org.kde.breeze
+    sudo kwriteconfig6 --file /etc/xdg/kwinrc --group org.kde.kdecoration2 --key theme Breeze
+
+Then log out and in. Plasma's old panel layout was never touched
+(`~/.config/plasma-org.kde.plasma.desktop-appletsrc`). Without logging out, as the user:
+`qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.changeShell org.kde.plasma.desktop`.
+`tools/adopt-desktop.sh` keeps a copy of the files it touches in `local/desktop-backup-*`.
+If the top bar is gone and nothing responds: Ctrl+Alt+F3, log in, run the commands above.
+
 ## Roll the whole system back to a snapshot
 
 Snapshots are made by `tools/snapshot.sh` before every system change, at the top

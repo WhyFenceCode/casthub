@@ -1,0 +1,13 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [{ "Name": "Cast Hub" }],
+        "Description": "Cast Hub views: Console, Files and Desktop tabs as virtual desktops, with Konsole and Dolphin docked",
+        "EnabledByDefault": true,
+        "Id": "org.casthub.views",
+        "License": "GPL-2.0-or-later",
+        "Name": "Cast Hub Views"
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

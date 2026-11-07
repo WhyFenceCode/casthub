@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+  <!-- Cast Hub top bar: no fill (the desktop's grid shows through), one 1 px rule in the text
+       colour along the bottom (design page 10). Colour comes from the colour scheme. -->
+  <style id="current-color-scheme" type="text/css">.ColorScheme-Text { color:#0b0b0b; }</style>
+  <rect id="topleft" x="0" y="0" width="1" height="1" fill="none"/>
+  <rect id="top" x="1" y="0" width="38" height="1" fill="none"/>
+  <rect id="topright" x="39" y="0" width="1" height="1" fill="none"/>
+  <rect id="left" x="0" y="1" width="1" height="38" fill="none"/>
+  <rect id="center" x="1" y="1" width="38" height="38" fill="none"/>
+  <rect id="right" x="39" y="1" width="1" height="38" fill="none"/>
+  <rect id="bottomleft" x="0" y="39" width="1" height="1" class="ColorScheme-Text" fill="currentColor"/>
+  <rect id="bottom" x="1" y="39" width="38" height="1" class="ColorScheme-Text" fill="currentColor"/>
+  <rect id="bottomright" x="39" y="39" width="1" height="1" class="ColorScheme-Text" fill="currentColor"/>
+  <rect id="hint-top-margin" x="0" y="0" width="1" height="0.01" fill="none"/>
+  <rect id="hint-bottom-margin" x="0" y="0" width="1" height="1" fill="none"/>
+  <rect id="hint-left-margin" x="0" y="0" width="0.01" height="1" fill="none"/>
+  <rect id="hint-right-margin" x="0" y="0" width="0.01" height="1" fill="none"/>
+</svg>

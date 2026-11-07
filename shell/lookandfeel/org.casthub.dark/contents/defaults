@@ -9,7 +9,7 @@ ColorScheme=CastHubDark
 Theme=breeze-dark
 
 [plasmarc][Theme]
-name=default
+name=casthub
 
 [Wallpaper]
 Image=CastHub
@@ -18,8 +18,8 @@ Image=CastHub
 cursorTheme=breeze_cursors
 
 [kwinrc][org.kde.kdecoration2]
-library=org.kde.breeze
-theme=Breeze
+library=org.kde.kwin.aurorae
+theme=org.casthub.decoration
 
 [ksplashrc][KSplash]
 Theme=org.casthub.dark

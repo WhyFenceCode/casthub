@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "Plasma/Shell",
+    "KPlugin": {
+        "Authors": [{ "Name": "Cast Hub" }],
+        "Description": "Cast Hub desktop: Plasma's shell with the Cast Hub desktop layer and top bar (SPEC D17)",
+        "Id": "org.casthub.desktop",
+        "License": "GPL-2.0-or-later",
+        "Name": "Cast Hub Desktop"
+    },
+    "X-KDE-ParentApp": "org.kde.plasmashell",
+    "X-Plasma-APIVersion": "2"
+}

@@ -1,0 +1,16 @@
+# Cast Hub shell: only what differs from Plasma's org.kde.plasma.desktop shell, which this
+# package falls back to for everything else.
+[Desktop]
+Containment=org.casthub.desktopview
+ToolBox=
+RuntimePlatform=Desktop
+
+[Desktop][ContainmentActions]
+RightButton;NoModifier=org.kde.contextmenu
+
+[Panel]
+Containment=org.kde.panel
+ToolBox=org.kde.paneltoolbox
+
+[Panel][ContainmentActions]
+RightButton;NoModifier=org.kde.contextmenu

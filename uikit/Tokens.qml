@@ -13,6 +13,12 @@ QtObject {
     readonly property real displayHeight: 633
     readonly property real displayMargin: 30
     readonly property real displayGutter: 18
+    readonly property real shellBar: 27
+    readonly property real shellBarMargin: 15
+    readonly property real shellPanelTop: 59
+    readonly property real shellPanelHeader: 40
+    readonly property real shellPanelBottom: 639
+    readonly property real shellPanelFirstCol: 4
 
     readonly property color accent: "#7E76D0"
     readonly property color success: "#9DD3B0"
@@ -45,6 +51,11 @@ QtObject {
     readonly property var dbody: ({ family: "Instrument Sans", size: 14.5, weight: 400, width: 100, tracking: 0, upper: false })
     readonly property var dlabel: ({ family: "DM Mono", size: 11.2, weight: 400, width: 100, tracking: 0.15, upper: true })
     readonly property var dnum: ({ family: "DM Mono", size: 9.5, weight: 400, width: 100, tracking: 0.06, upper: false })
+    readonly property var barmark: ({ family: "Bricolage Grotesque", size: 11.1, weight: 800, width: 87.5, tracking: -0.01, upper: true })
+    readonly property var barlabel: ({ family: "DM Mono", size: 8.4, weight: 400, width: 100, tracking: 0.12, upper: true })
+    readonly property var today: ({ family: "Bricolage Grotesque", size: 125, weight: 800, width: 75, tracking: -0.02, upper: false })
+    readonly property var faint: ({ family: "Bricolage Grotesque", size: 255, weight: 800, width: 75, tracking: -0.02, upper: false })
+    readonly property var tile: ({ family: "DM Mono", size: 7, weight: 400, width: 100, tracking: 0.08, upper: true })
 
     readonly property real radiusPill: 999
     readonly property real radiusPanel: 6

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <!-- Filled in by tools/install-theme.sh from /etc/casthub/casthub.toml [display]. -->
+    <entry name="location" type="String"><default>@LOCATION@</default></entry>
+    <entry name="coordinates" type="String"><default>@COORDINATES@</default></entry>
+    <entry name="calendarPlugins" type="StringList"><default>pimevents,holidaysevents</default></entry>
+  </group>
+</kcfg>
