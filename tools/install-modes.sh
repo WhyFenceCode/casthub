@@ -62,12 +62,18 @@ for m in workstation display console; do
 done
 install -Dm755 "$repo/modes/casthub-session" /usr/libexec/casthub/casthub-session
 install -Dm755 "$repo/modes/display/casthub-leave" /usr/libexec/casthub/casthub-leave
+install -Dm755 "$repo/modes/workstation/casthub-appearance" /usr/libexec/casthub/casthub-appearance
+install -Dm644 "$repo/modes/workstation/casthub-appearance.service" /usr/lib/systemd/user/casthub-appearance.service
+install -Dm644 "$repo/modes/workstation/casthub-appearance.path" /usr/lib/systemd/user/casthub-appearance.path
+# Per-user light/dark for the login screen: anyone may add their own file, nobody can
+# list, replace or delete another user's (sticky bit).
+install -d -m 1733 -o root -g root /var/lib/casthub/appearance
 install -Dm644 "$repo/modes/display/sway.conf" /usr/share/casthub/display/sway.conf
 install -Dm644 "$repo/modes/console/sway.conf" /usr/share/casthub/console/sway.conf
 install -Dm644 "$repo/modes/console/CastHubConsole.profile" /usr/share/konsole/CastHubConsole.profile
 install -Dm644 "$repo/modes/console/CastHub.colorscheme" /usr/share/konsole/CastHub.colorscheme
 install -Dm644 "$repo/docs/SPEC.md" /usr/share/doc/casthub/SPEC.md
-systemctl --global enable casthub-workstation.target >/dev/null 2>&1 || true
+systemctl --global enable casthub-workstation.target casthub-appearance.service casthub-appearance.path
 
 step "SDDM config"
 install -Dm644 "$repo/system/sddm/casthub.conf" /etc/sddm.conf.d/casthub.conf
@@ -92,7 +98,7 @@ if ! grep -qF "$marker" "$pam"; then
 fi
 grep -n 'casthub' "$pam"
 
-restorecon -R /usr/share/sddm/themes/casthub /usr/share/casthub /usr/libexec/casthub /usr/share/fonts/casthub /etc/sddm.conf.d 2>/dev/null || true
+restorecon -R /usr/share/sddm/themes/casthub /usr/share/casthub /usr/libexec/casthub /usr/share/fonts/casthub /etc/sddm.conf.d /var/lib/casthub 2>/dev/null || true
 
 step "Done"
 cat <<EOF

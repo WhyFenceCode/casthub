@@ -45,3 +45,24 @@ manager switched to SDDM.
 
 Left for acceptance (after reboot): install, switch to SDDM, then check that Display
 starts with no password, Console works for admins only, and leaving a mode returns to the login screen.
+
+## M7 acceptance + owner feedback, 2026-11-07
+
+Owner tested after reboot: login screen, Display (no password), Console and Workstation all work.
+Fixes from that test:
+- Light/dark now follows the selected user's own Plasma setting (published at login by
+  `casthub-appearance` to `/var/lib/casthub/appearance/<user>`), falling back to light.
+  Only the boot splash is always dark.
+- Sign-in errors show beside the password field (with a shake); footer and top-bar centre
+  text are centred on the screen.
+
+## M8 (started early): boot splash, 2026-11-07
+
+- Fedora's `bgrt` Plymouth theme re-showed the firmware logo (the coreboot rabbit). Replaced by
+  a Cast Hub theme: the signature writes itself on the dark background (design page 2).
+- `brand/signature.py`: Mrs Saint Delafield outlines positioned by Pango; overlay against the
+  mockup coincides. Timing from the brand page (0.55 s stroke, 0.2 s stagger, fill fade, 0.9 s
+  flourish; 3.85 s total). `brand/flourish.json` traced from the mockup's accent swash.
+- `brand/splash.py` generates frames for the real screen at install time; text is pre-rendered,
+  so the initramfs needs no fonts. `tools/install-splash.sh` backs up the initramfs first.
+- Not changed: the firmware's own logo, shown for a moment before Linux starts.

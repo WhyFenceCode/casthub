@@ -1,0 +1,10 @@
+[Unit]
+Description=Publish Plasma light/dark preference for the Cast Hub login screen
+PartOf=casthub-workstation.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/casthub/casthub-appearance
+
+[Install]
+WantedBy=casthub-workstation.target

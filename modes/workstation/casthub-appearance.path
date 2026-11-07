@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch Plasma colour settings for the Cast Hub login screen
+PartOf=casthub-workstation.target
+
+[Path]
+PathChanged=%h/.config/kdeglobals
+Unit=casthub-appearance.service
+
+[Install]
+WantedBy=casthub-workstation.target

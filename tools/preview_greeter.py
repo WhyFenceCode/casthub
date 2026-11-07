@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("QML_XHR_ALLOW_FILE_READ", "1")  # the real greeter gets this from system/sddm/casthub.conf
 
 from PySide6.QtCore import (  # noqa: E402
     Property,
@@ -111,7 +112,9 @@ class Keyboard(QObject):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=["workstation", "display", "console"], default="workstation")
-    ap.add_argument("--scheme", choices=["light", "dark"], default="light")
+    ap.add_argument("--scheme", choices=["light", "dark", "user"], default="light")
+    ap.add_argument("--user-scheme", choices=["light", "dark", "none"], default="none",
+                    help="with --scheme user: what the preview user's appearance file says")
     ap.add_argument("--size", default="1080x675")
     ap.add_argument("--admin", action="store_true", help="make the preview user an admin")
     ap.add_argument("--press", default="", help="comma-separated keys to send after load, e.g. Down,Return")
@@ -143,6 +146,13 @@ def main() -> int:
     for k, v in cp["General"].items():
         config.insert(k, v)
     config.insert("ColorScheme", a.scheme)
+    appdir = ROOT / "local" / "previews" / "appearance"
+    appdir.mkdir(parents=True, exist_ok=True)
+    for f in appdir.iterdir():
+        f.unlink()
+    if a.user_scheme != "none":
+        (appdir / "torsten").write_text(a.user_scheme + "\n")
+    config.insert("AppearanceDir", str(appdir))
     config.insert("Location", "Kingston")
     config.insert("AdminUsers", "torsten" if a.admin else "")
 
@@ -169,7 +179,8 @@ def main() -> int:
     rootobj.setProperty("selected", {"workstation": 0, "display": 1, "console": 2}[a.mode])
     view.show()
 
-    out = Path(a.out) if a.out else ROOT / "local" / "previews" / f"greeter-{a.mode}-{a.scheme}-{a.size}.png"
+    tag = a.scheme if a.scheme != "user" else f"user-{a.user_scheme}"
+    out = Path(a.out) if a.out else ROOT / "local" / "previews" / f"greeter-{a.mode}-{tag}-{a.size}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
 
     def press_keys():

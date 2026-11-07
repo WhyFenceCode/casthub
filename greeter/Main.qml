@@ -30,12 +30,33 @@ Rectangle {
     property date now: new Date()
     Timer { interval: 1000; running: root.fixedNow === null; repeat: true; triggeredOnStart: true; onTriggered: root.now = new Date() }
     readonly property date clockNow: fixedNow !== null ? fixedNow : now
+    // Light/dark follows the selected user's own Plasma setting. Their session publishes
+    // "light" or "dark" to <AppearanceDir>/<user> (modes/workstation/casthub-appearance),
+    // because the greeter can't read home folders. No file yet: FallbackScheme (light).
+    property var userSchemes: ({})
+    function loadScheme(name) {
+        if (!name || userSchemes[name] !== undefined) return
+        var x = new XMLHttpRequest()
+        x.onreadystatechange = function () {
+            if (x.readyState !== XMLHttpRequest.DONE) return
+            var v = String(x.responseText || "").trim()
+            var m = Object.assign({}, root.userSchemes)
+            m[name] = (v === "dark" || v === "light") ? v : ""
+            root.userSchemes = m
+        }
+        x.open("GET", "file://" + cfg("AppearanceDir", "/var/lib/casthub/appearance") + "/" + name)
+        x.send()
+    }
     readonly property bool dark: {
-        var s = cfg("ColorScheme", "auto")
+        var s = cfg("ColorScheme", "user")
         if (s === "dark") return true
         if (s === "light") return false
-        var h = clockNow.getHours()
-        return h >= Number(cfg("DarkFrom", "19")) || h < Number(cfg("DarkUntil", "7"))
+        if (s === "auto") {
+            var h = clockNow.getHours()
+            return h >= Number(cfg("DarkFrom", "19")) || h < Number(cfg("DarkUntil", "7"))
+        }
+        var mine = userSchemes[user.name]
+        return mine ? mine === "dark" : cfg("FallbackScheme", "light") === "dark"
     }
 
     Tokens { id: t; dark: root.dark }
@@ -81,6 +102,7 @@ Rectangle {
             Component.onCompleted: {
                 if (name === root.displayUser) return
                 var l = root.users.slice(); l.push({ name: name, realName: realName || name }); root.users = l
+                root.loadScheme(name)
                 if (typeof userModel !== "undefined" && name === userModel.lastUser) root.userIdx = l.length - 1
             }
         }
@@ -95,7 +117,7 @@ Rectangle {
     property bool busy: false
     property string message: ""
     Timer { id: messageTimer; interval: 4000; onTriggered: root.message = "" }
-    function say(m) { message = m; messageTimer.restart() }
+    function say(m) { message = m; messageTimer.restart(); shake.restart() }
 
     function pick(i) {
         selected = (i + modes.length) % modes.length
@@ -163,7 +185,7 @@ Rectangle {
         Label { text: "."; u: root.u; tok: t; textStyle: t.wordmark; color: t.accent }
     }
     Row {
-        x: root.colX(4)
+        anchors.horizontalCenter: parent.horizontalCenter
         anchors.verticalCenter: topRule.top
         anchors.verticalCenterOffset: -24 * root.u
         spacing: 8 * root.u
@@ -268,6 +290,14 @@ Rectangle {
                 }
             }
             Label { y: 57 * root.u - height / 2; u: root.u; tok: t; textStyle: t.label; color: t.muted; text: "Password" }
+            // Errors sit next to the field they're about.
+            Label {
+                anchors.right: parent.right
+                y: 57 * root.u - height / 2
+                u: root.u; tok: t; textStyle: t.label; color: t.error
+                text: root.message
+                visible: root.message.length > 0
+            }
             TextInput {
                 id: password
                 y: 85 * root.u - height / 2
@@ -282,9 +312,18 @@ Rectangle {
                 enabled: !root.busy
                 Keys.priority: Keys.BeforeItem
                 Keys.onPressed: function (e) { root.handleKey(e) }
+                onTextChanged: if (text.length) root.message = ""
                 cursorDelegate: Rectangle { width: Math.max(1, root.u); color: t.accent; visible: password.activeFocus }
             }
             Rectangle { y: 104 * root.u; width: parent.width; height: root.hair; color: t.line }
+
+            SequentialAnimation {
+                id: shake
+                NumberAnimation { target: signIn; property: "x"; to: -8 * root.u; duration: 50 }
+                NumberAnimation { target: signIn; property: "x"; to: 7 * root.u; duration: 70 }
+                NumberAnimation { target: signIn; property: "x"; to: -4 * root.u; duration: 60 }
+                NumberAnimation { target: signIn; property: "x"; to: 0; duration: 60 }
+            }
         }
 
         // Display explainer
@@ -301,7 +340,12 @@ Rectangle {
                 u: root.u; tok: t; textStyle: t.body
                 text: "No sign-in needed. This screen turns into a receiver for AirPlay and Miracast until you leave display mode."
             }
-            Label { y: 84 * root.u - height / 2; u: root.u; tok: t; textStyle: t.label; color: t.muted; text: "Files and accounts stay locked" }
+            Label {
+                y: 84 * root.u - height / 2
+                u: root.u; tok: t; textStyle: t.label
+                color: root.message.length ? t.error : t.muted
+                text: root.message.length ? root.message : "Files and accounts stay locked"
+            }
             Rectangle { y: 104 * root.u; width: parent.width; height: root.hair; color: t.line }
         }
 
@@ -329,20 +373,19 @@ Rectangle {
 
     // ---- footer ------------------------------------------------------------
     Rectangle { id: bottomRule; x: root.margin; y: root.height - 71 * root.u; width: root.width - 2 * root.margin; height: root.hair; color: t.fg }
+    readonly property real footerMid: bottomRule.y + 36 * root.u   // centre line of the Restart / Shut down pills
     Label {
         x: root.margin
-        y: bottomRule.y + 35 * root.u - height / 2
+        y: root.footerMid - height / 2
         u: root.u; tok: t; textStyle: t.label; color: t.muted
         text: root.cfg("OsLabel", "Fedora Linux") + " · " + root.cfg("SessionLabel", "Wayland")
     }
     Label {
         visible: root.isPrimary
-        x: root.colX(4)
-        y: bottomRule.y + 35 * root.u - height / 2
-        u: root.u; tok: t; textStyle: t.label
-        color: root.message.length ? t.error : t.muted
-        text: root.message.length ? root.message
-             : root.mode.password ? "Caps lock · " + ((typeof keyboard !== "undefined" && keyboard.capsLock) ? "On" : "Off")
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: root.footerMid - height / 2
+        u: root.u; tok: t; textStyle: t.label; color: t.muted
+        text: root.mode.password ? "Caps lock · " + ((typeof keyboard !== "undefined" && keyboard.capsLock) ? "On" : "Off")
              : "Tab · change mode · ↵ start"
     }
     Row {
