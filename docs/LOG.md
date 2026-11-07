@@ -122,3 +122,5 @@ agenda hidden when no calendar is set up unless it is a holiday; thin bar everyw
 - Tray: monochrome symbolic icons in the bar's text colour; kept (D18).
 - `tools/adopt-desktop.sh`: for accounts that logged in before (Plasma only rebuilds theme
   defaults when the theme name changes).
+- Owner check: desktop looks good. Added "Log out" at the right of the top bar (inside the
+  clock widget, so existing layouts get it too); it opens Plasma's logout confirmation.
