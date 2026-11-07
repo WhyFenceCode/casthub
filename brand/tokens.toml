@@ -34,6 +34,11 @@ muted = "#555555"
 line = "#CBCBCB"      # hairlines, grid
 well = "#D6D6D6"      # avatar / image wells, file tiles
 
+# Boot splash (Plymouth): pure black, so the signature frames and the screen around them
+# match exactly on any panel (owner request).
+[boot]
+bg = "#000000"
+
 [color.dark]
 bg = "#161616"        # night
 surface = "#1C1C1C"   # windows, panels (design pages 6, 9, 11)

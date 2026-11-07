@@ -160,7 +160,7 @@ def colours() -> dict[str, tuple[float, float, float]]:
         h = h.lstrip("#")
         return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))  # type: ignore[return-value]
 
-    return {"bg": rgb(t["color"]["dark"]["bg"]), "ink": rgb(t["color"]["dark"]["fg"]), "accent": rgb(t["color"]["accent"])}
+    return {"bg": rgb(t["boot"]["bg"]), "ink": rgb(t["color"]["dark"]["fg"]), "accent": rgb(t["color"]["accent"])}
 
 
 # ---- drawing --------------------------------------------------------------------

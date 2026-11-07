@@ -84,7 +84,8 @@ def render_label(path: Path, text: str, px: float, tracking_em: float, fg: str, 
 
 def build(out: Path, width: int, height: int, host: str, fps: int) -> None:
     t = tokens()
-    dark, accent = t["color"]["dark"], t["color"]["accent"]
+    dark, accent = dict(t["color"]["dark"]), t["color"]["accent"]
+    dark["bg"] = t["boot"]["bg"]                 # pure black behind everything on the splash
     label = t["type"]["label"]
     u = height / t["frame"]["height"]
     margin = t["grid"]["margin"] * u
@@ -157,6 +158,15 @@ def build(out: Path, width: int, height: int, host: str, fps: int) -> None:
         "    }",
         "}",
         "Plymouth.SetRefreshFunction(refresh_callback);",
+        "",
+        "# Plymouth hands the screen over (to the login screen, or at shutdown) with whatever was",
+        "# drawn last still showing: always leave the whole signature, never a half-written one.",
+        "fun quit_callback() {",
+        f"    global.sig.SetImage(Image(global.files[{meta['frames'] - 1}]));",
+        f"    global.shown = {meta['frames'] - 1};",
+        f"    global.tick = {meta['frames'] * ticks:g};",
+        "}",
+        "Plymouth.SetQuitFunction(quit_callback);",
         "",
     ]
     (out / "casthub.script").write_text("\n".join(lines))

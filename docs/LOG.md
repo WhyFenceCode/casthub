@@ -124,3 +124,6 @@ agenda hidden when no calendar is set up unless it is a holiday; thin bar everyw
   defaults when the theme name changes).
 - Owner check: desktop looks good. Added "Log out" at the right of the top bar (inside the
   clock widget, so existing layouts get it too); it opens Plasma's logout confirmation.
+- Owner check: boot splash froze half-written when Plymouth handed over to the login screen,
+  and its background should be pure black. Plymouth now draws the full signature on quit, and
+  the splash uses `[boot] bg = #000000` (frames, labels and screen).
