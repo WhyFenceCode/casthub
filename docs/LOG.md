@@ -140,3 +140,13 @@ agenda hidden when no calendar is set up unless it is a holiday; thin bar everyw
     "Log out"; "Passthrough setup" is listed as Later (D21, M10). The ways-to-connect block and
     the leave choices are right-snapped grids, each key on one line.
   - KWin blur off: unused by the design, and it failed every frame on this GPU.
+- Owner check, round 3:
+  - Alt+Tab: `shell/tabbox/org.casthub.switcher` (numbered rows: app, title, view).
+  - Notifications, volume/brightness OSD, tray pop-ups, KRunner, tooltips: Plasma 6.8 compiles
+    their QML in, so they are themed through the `casthub` desktop theme (generated pop-up frame,
+    tooltip and 2 px progress bar, `brand/build.py`) plus the colour scheme and fonts.
+  - Admin password prompt (polkit agent): also compiled in; it follows the colour scheme, fonts and
+    our window frame. Its layout is KDE's.
+  - Boot splash: the signature could show cut off when the screen changed size during boot (the
+    real graphics driver replacing the firmware framebuffer) or a second screen appeared; the
+    Plymouth script now re-centres and scales to the smallest screen whenever the screens change.

@@ -244,6 +244,85 @@ def kwin_script(t: dict) -> str:
     return f"// {HEADER} (from shell/kwin-script/main.js.in)\n" + src
 
 
+# ---- Plasma desktop theme frames (SPEC D22) ---------------------------------------------
+# Plasma draws every pop-up (notifications, volume/brightness, tray pop-ups, KRunner, tooltips)
+# from these nine-piece SVGs. Colours are the colour scheme's (recoloured by Plasma at run time):
+# window background with a 1 px rule at the scheme's text colour, faint, like a desktop panel.
+
+def _f(v: float) -> str:
+    return f"{v:g}"
+
+
+def _svg(w: float, h: float, body: list[str], note: str) -> str:
+    return "\n".join([
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{_f(w)}" height="{_f(h)}" viewBox="0 0 {_f(w)} {_f(h)}">',
+        f"  <!-- {HEADER} {note} -->",
+        '  <style id="current-color-scheme" type="text/css">.ColorScheme-Background { color:#ececec; } '
+        ".ColorScheme-Text { color:#0b0b0b; }</style>",
+        *body, "</svg>", ""])
+
+
+def _rect(id_: str | None, x, y, w, h, cls: str, op: float = 1) -> str:
+    ident = f' id="{id_}"' if id_ else ""
+    opacity = f' fill-opacity="{_f(op)}"' if op != 1 else ""
+    return (f'<rect{ident} x="{_f(x)}" y="{_f(y)}" width="{_f(w)}" height="{_f(h)}" class="{cls}" '
+            f'fill="currentColor"{opacity}/>')
+
+
+def frame_svg(r: int, margin: int, line_op: float, note: str, prefix: str = "") -> str:
+    m = 10                                          # stretchable middle
+    x1, x2, x3 = r, r + m, 2 * r + m
+    bg, ink = "ColorScheme-Background", "ColorScheme-Text"
+    body = []
+    for name, cx, cy, sx, sy in (("topleft", x1, x1, -1, -1), ("topright", x2, x1, 1, -1),
+                                 ("bottomleft", x1, x2, -1, 1), ("bottomright", x2, x2, 1, 1)):
+        sw = 0 if sx * sy > 0 else 1
+        ring = (f"M {_f(cx)},{_f(cy + sy * r)} A {r} {r} 0 0 {sw} {_f(cx + sx * r)},{_f(cy)} "
+                f"L {_f(cx + sx * (r - 1))},{_f(cy)} A {r - 1} {r - 1} 0 0 {1 - sw} {_f(cx)},{_f(cy + sy * (r - 1))} Z")
+        disc = (f"M {_f(cx)},{_f(cy + sy * (r - 1))} A {r - 1} {r - 1} 0 0 {sw} {_f(cx + sx * (r - 1))},{_f(cy)} "
+                f"L {_f(cx)},{_f(cy)} Z")
+        body.append(f'  <g id="{prefix}{name}"><path d="{disc}" class="{bg}" fill="currentColor"/>'
+                    f'<path d="{ring}" class="{ink}" fill="currentColor" fill-opacity="{_f(line_op)}"/></g>')
+    edges = {
+        "top": [(x1, 0, m, 1, ink, line_op), (x1, 1, m, r - 1, bg, 1)],
+        "bottom": [(x1, x3 - 1, m, 1, ink, line_op), (x1, x2, m, r - 1, bg, 1)],
+        "left": [(0, x1, 1, m, ink, line_op), (1, x1, r - 1, m, bg, 1)],
+        "right": [(x3 - 1, x1, 1, m, ink, line_op), (x2, x1, r - 1, m, bg, 1)],
+    }
+    for name, parts in edges.items():
+        body.append(f'  <g id="{prefix}{name}">' + "".join(_rect(None, *p) for p in parts) + "</g>")
+    body.append("  " + _rect(f"{prefix}center", x1, x1, m, m, bg))
+    if not prefix:
+        for side, (x, y, w, h) in {"top": (x1, -20, 4, margin), "bottom": (x1, x3 + 10, 4, margin),
+                                   "left": (-20, x1, margin, 4), "right": (x3 + 10, x1, margin, 4)}.items():
+            body.append(f'  <rect id="hint-{side}-margin" x="{_f(x)}" y="{_f(y)}" width="{_f(w)}" height="{_f(h)}" fill="none"/>')
+    return _svg(x3, x3, body, note)
+
+
+def popup_svg(t: dict) -> str:
+    return frame_svg(t["radius"]["popup"], 12, 0.22, "Pop-up frame: notifications, OSD, tray, KRunner.")
+
+
+def tooltip_svg(t: dict) -> str:
+    return frame_svg(max(4, t["radius"]["popup"] - 4), 8, 0.22, "Tooltips.")
+
+
+def bar_meter_svg(t: dict) -> str:
+    """Progress bars (volume/brightness OSD, notifications): a 2 px rule, ink over a faint
+    track, square ends, like the desktop meters (design pages 7-8)."""
+    ink = "ColorScheme-Text"
+    body = []
+    for prefix, op in (("bar-inactive", 0.15), ("bar-active", 1)):
+        pieces = {"topleft": (0, 0, 1, 1), "top": (1, 0, 10, 1), "topright": (11, 0, 1, 1),
+                  "left": (0, 1, 1, 0.01), "center": (1, 1, 10, 0.01), "right": (11, 1, 1, 0.01),
+                  "bottomleft": (0, 1.01, 1, 1), "bottom": (1, 1.01, 10, 1), "bottomright": (11, 1.01, 1, 1)}
+        y0 = 0 if prefix == "bar-inactive" else 4
+        for name, (x, y, w, h) in pieces.items():
+            body.append("  " + _rect(f"{prefix}-{name}", x, y + y0, w, h, ink, op))
+    body.append('  <rect id="hint-bar-size" x="20" y="0" width="4" height="2" fill="none"/>')
+    return _svg(24, 8, body, "Progress bar.")
+
+
 def lnf_layout(t: dict) -> str:
     return f"// {HEADER} (from shell/layout.js)\n" + (ROOT / "shell" / "layout.js").read_text()
 
@@ -261,6 +340,9 @@ for _v in ("light", "dark"):
     OUTPUTS[f"{_d}/contents/splash/Splash.qml"] = lambda t, v=_v: lnf_splash(t, v)
     OUTPUTS[f"{_d}/contents/layouts/org.casthub.desktop-layout.js"] = lnf_layout
 OUTPUTS["shell/kwin-script/org.casthub.views/contents/code/main.js"] = kwin_script
+OUTPUTS["shell/plasma-theme/casthub/dialogs/background.svg"] = popup_svg
+OUTPUTS["shell/plasma-theme/casthub/widgets/tooltip.svg"] = tooltip_svg
+OUTPUTS["shell/plasma-theme/casthub/widgets/bar_meter_horizontal.svg"] = bar_meter_svg
 # The shell's own first-run layout, used when the user's global theme has none for this shell.
 OUTPUTS["shell/plasma-shell/org.casthub.desktop/contents/layout.js"] = lnf_layout
 

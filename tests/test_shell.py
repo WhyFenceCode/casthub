@@ -30,6 +30,7 @@ class TestPackages(unittest.TestCase):
         yield SHELL / "plasma-theme" / "casthub"
         yield SHELL / "decoration" / "org.casthub.decoration"
         yield SHELL / "kwin-script" / "org.casthub.views"
+        yield SHELL / "tabbox" / "org.casthub.switcher"
         yield from sorted(p for p in (SHELL / "plasmoids").iterdir() if p.is_dir())
 
     def test_metadata_ids_match_directories(self):
@@ -40,7 +41,7 @@ class TestPackages(unittest.TestCase):
     def test_qml_entry_points_exist(self):
         for d in self.packages():
             meta = json.loads((d / "metadata.json").read_text())
-            if meta.get("KPackageStructure") in ("Plasma/Applet", "KWin/Decoration"):
+            if meta.get("KPackageStructure") in ("Plasma/Applet", "KWin/Decoration", "KWin/WindowSwitcher"):
                 self.assertTrue((d / "contents" / "ui" / "main.qml").is_file(), d)
 
     def test_shell_and_lnf_share_the_layout(self):
@@ -167,3 +168,33 @@ class TestLeaveScreens(unittest.TestCase):
             out = Path(d) / "lock.png"
             wallpaper.render_lock(out, wallpaper.tokens(), 320, 180)
             self.assertTrue(out.stat().st_size > 0)
+
+
+class TestPopups(unittest.TestCase):
+    def test_theme_frames_are_complete(self):
+        import xml.etree.ElementTree as ET
+        pieces = ["topleft", "top", "topright", "left", "center", "right", "bottomleft", "bottom", "bottomright"]
+        for rel, prefixes in (("dialogs/background.svg", [""]), ("widgets/tooltip.svg", [""]),
+                              ("widgets/bar_meter_horizontal.svg", ["bar-inactive-", "bar-active-"])):
+            root = ET.parse(SHELL / "plasma-theme" / "casthub" / rel).getroot()
+            ids = {e.get("id") for e in root.iter() if e.get("id")}
+            for p in prefixes:
+                for piece in pieces:
+                    self.assertIn(p + piece, ids, rel)
+            self.assertIn("current-color-scheme", ids, rel)
+
+    def test_alt_tab_uses_our_switcher(self):
+        self.assertEqual(ini(ROOT / "system" / "xdg" / "kwinrc")[(("TabBox",), "LayoutName")], "org.casthub.switcher")
+
+
+class TestSplashLayout(unittest.TestCase):
+    def test_splash_relayouts_when_screens_change(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            subprocess.run([sys.executable, str(ROOT / "brand" / "splash.py"), "--out", d, "--width", "640",
+                            "--height", "360", "--fps", "5"], check=True, capture_output=True)
+            script = (Path(d) / "casthub.script").read_text()
+        self.assertIn("fun layout()", script)
+        self.assertIn("Window.GetWidth(0) != global.seen_w", script)
+        self.assertIn("Plymouth.SetQuitFunction(quit_callback);", script)

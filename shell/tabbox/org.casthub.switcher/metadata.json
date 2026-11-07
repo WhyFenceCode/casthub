@@ -1,0 +1,10 @@
+{
+    "KPackageStructure": "KWin/WindowSwitcher",
+    "KPlugin": {
+        "Authors": [{ "Name": "Cast Hub" }],
+        "Description": "Cast Hub window list: numbered rows, app, title and view",
+        "Id": "org.casthub.switcher",
+        "License": "GPL-2.0-or-later",
+        "Name": "Cast Hub"
+    }
+}

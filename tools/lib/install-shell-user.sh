@@ -21,5 +21,7 @@ if [ -d "$repo/shell/decoration/org.casthub.decoration" ]; then
   copy "$repo/shell/decoration/org.casthub.decoration" "$dst/kwin/decorations/org.casthub.decoration"
   copy "$repo/uikit" "$dst/kwin/decorations/org.casthub.decoration/contents/ui/uikit"
 fi
+copy "$repo/shell/tabbox/org.casthub.switcher" "$dst/kwin/tabbox/org.casthub.switcher"
+copy "$repo/uikit" "$dst/kwin/tabbox/org.casthub.switcher/contents/ui/uikit"
 if [ -d "$repo/shell/kwin-script/org.casthub.views" ]; then copy "$repo/shell/kwin-script/org.casthub.views" "$dst/kwin/scripts/org.casthub.views"; fi
 mkdir -p "$dst/color-schemes"; cp "$repo"/shell/colors/*.colors "$dst/color-schemes/"

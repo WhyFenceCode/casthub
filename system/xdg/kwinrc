@@ -13,3 +13,7 @@ theme=org.casthub.decoration
 
 [ModifierOnlyShortcuts]
 Meta=org.kde.krunner,/App,,toggleDisplay
+
+# Alt+Tab: the Cast Hub window list (shell/tabbox/org.casthub.switcher).
+[TabBox]
+LayoutName=org.casthub.switcher

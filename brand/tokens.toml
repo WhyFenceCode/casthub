@@ -214,6 +214,7 @@ upper = true
 [radius]
 pill = 999
 panel = 6           # GUESS: window/panel corners on the desktop mockups
+popup = 10          # px: Plasma pop-ups, notifications, volume/brightness, tooltips
 
 [motion]
 fast = 120          # ms

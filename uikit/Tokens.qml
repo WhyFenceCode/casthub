@@ -59,6 +59,7 @@ QtObject {
 
     readonly property real radiusPill: 999
     readonly property real radiusPanel: 6
+    readonly property real radiusPopup: 10
     readonly property int motionFast: 120
     readonly property int motionNormal: 220
 }
