@@ -9,6 +9,7 @@ import QtQuick.Window
 import org.kde.coreaddons as KCoreAddons
 import org.kde.plasma.private.sessions
 import org.kde.plasma.private.keyboardindicator as KeyboardIndicator
+import org.kde.plasma.private.battery as PlasmaBattery
 import "uikit"
 
 Rectangle {
@@ -97,11 +98,19 @@ Rectangle {
         Rectangle { width: 6 * root.u; height: width; color: t.accent; anchors.verticalCenter: parent.verticalCenter }
         Label { u: root.u; tok: t; textStyle: t.label; text: "Locked" }
     }
-    Label {
+    PlasmaBattery.BatteryControlModel { id: batteryControl }
+    Row {
         anchors.right: parent.right; anchors.rightMargin: root.margin
         y: 23.5 * root.u - height / 2
-        u: root.u; tok: t; textStyle: t.label; color: t.muted
-        text: kuser.loginName
+        spacing: 14 * root.u
+        Battery {
+            anchors.verticalCenter: parent.verticalCenter
+            u: root.u; tok: t; sysfs: false
+            present: batteryControl.hasInternalBatteries
+            percent: batteryControl.percent
+            charging: batteryControl.pluggedIn && batteryControl.percent < 100
+        }
+        Label { u: root.u; tok: t; textStyle: t.label; color: t.muted; text: kuser.loginName }
     }
     Rectangle { x: root.margin; y: 47 * root.u; width: root.width - 2 * root.margin; height: root.hair; color: t.fg }
 

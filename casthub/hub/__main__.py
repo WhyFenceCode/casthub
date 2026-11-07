@@ -67,7 +67,13 @@ class UiLink:
                 await asyncio.wait_for(r.readline(), 1)
             w.close()
         except (OSError, TimeoutError):
-            pass
+            # No Display UI (testing from the desktop): a PIN must still be seen.
+            if msg.get("cmd") == "pin" and msg.get("pin"):
+                pin = str(msg["pin"])
+                with contextlib.suppress(OSError):
+                    await asyncio.create_subprocess_exec(
+                        "notify-send", "-a", "Cast Hub", "-u", "critical", "Type this PIN on your PC",
+                        f"{pin[:4]} {pin[4:]}" if len(pin) == 8 else pin)
 
 
 class Hub:
@@ -108,6 +114,8 @@ class Hub:
                         await first.on_p2p_source(ev["addr"], int(ev["rtsp_port"]), ev.get("name", ""))
                     elif ev["event"] == "gone":
                         first.on_p2p_gone(ev["addr"])
+                    elif ev["event"] == "pin":
+                        await first.show_pin(str(ev["pin"]))
             await asyncio.sleep(2)
 
     async def stop(self) -> None:

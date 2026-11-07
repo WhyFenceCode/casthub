@@ -226,3 +226,22 @@ class TestLockScreen(unittest.TestCase):
             w, h = signature.write_two_lines_png(Path(d) / "s.png", 120)
         self.assertEqual(h, 120)
         self.assertLess(w, 2 * h)       # two lines: taller than the one-line signature's 1:3
+
+
+class TestBattery(unittest.TestCase):
+    """Battery level wherever nobody is signed in: login screen, Display bar, lock screen."""
+
+    def test_signed_out_screens_show_the_battery(self):
+        for f in (ROOT / "greeter" / "Main.qml", ROOT / "casthub" / "ui" / "qml" / "DisplayBar.qml",
+                  TestLockScreen.QML):
+            self.assertRegex(f.read_text(), r"\bBattery \{", f)
+        self.assertIn("Battery 1.0 Battery.qml", (ROOT / "uikit" / "qmldir").read_text())
+
+    def test_greeter_may_read_sysfs(self):
+        self.assertIn("QML_XHR_ALLOW_FILE_READ=1", (ROOT / "system" / "sddm" / "casthub.conf").read_text())
+
+    def test_lock_screen_uses_plasma_battery_model(self):
+        # kscreenlocker can't read files from QML; it gets the level from Plasma's battery model.
+        qml = TestLockScreen.QML.read_text()
+        self.assertIn("BatteryControlModel", qml)
+        self.assertIn("sysfs: false", qml)

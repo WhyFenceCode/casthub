@@ -12,6 +12,7 @@ Rectangle {
     property string receiverName: "Cast Hub-1"
     property string deviceName: ""          // sender, while connecting/streaming
     property string busyText: ""            // non-empty: show the busy toast
+    property string pinCode: ""             // Wi-Fi Direct pairing: the PIN to type on the PC
     property string location: ""
     property string coordinates: ""
     property bool airplay: true
@@ -73,7 +74,8 @@ Rectangle {
             y: 350 * root.uy - baselineOffset
             width: root.colX(8) - x
             u: root.u; tok: t; textStyle: t.dclock
-            text: root.screenState === "connecting" && root.deviceName
+            text: root.pinCode ? root.pinCode.replace(/^(\d{4})(\d{4})$/, "$1 $2")
+                  : root.screenState === "connecting" && root.deviceName
                   ? root.deviceName : root.pad(root.clockNow.getHours()) + ":" + root.pad(root.clockNow.getMinutes())
             fontSizeMode: Text.HorizontalFit
             minimumPixelSize: 40 * root.u
@@ -84,8 +86,9 @@ Rectangle {
             x: root.margin
             y: 435 * root.uy - baselineOffset
             u: root.u; tok: t; textStyle: t.ddate
-            color: root.screenState === "connecting" ? t.muted : t.fg
-            text: root.screenState === "connecting" ? "Connecting…"
+            color: root.pinCode || root.screenState === "connecting" ? t.muted : t.fg
+            text: root.pinCode ? "Type this PIN on your PC"
+                  : root.screenState === "connecting" ? "Connecting…"
                   : root.days[root.clockNow.getDay()] + " " + root.clockNow.getDate() + " " + root.months[root.clockNow.getMonth()]
         }
         Label {
@@ -99,16 +102,18 @@ Rectangle {
 
         // Status, bottom left.
         Item {
+            readonly property bool active: root.screenState === "connecting" || root.pinCode !== ""
+            id: status
             x: root.margin; y: 499 * root.uy
             Rectangle {
                 id: dot
                 width: 9 * root.u; height: width; radius: width / 2
                 anchors.verticalCenter: parent.top
-                color: root.screenState === "connecting" ? t.accent : "transparent"
-                border.width: root.screenState === "connecting" ? 0 : Math.max(1, 1.3 * root.u)
+                color: status.active ? t.accent : "transparent"
+                border.width: status.active ? 0 : Math.max(1, 1.3 * root.u)
                 border.color: t.accent
                 SequentialAnimation on opacity {
-                    running: root.screenState === "connecting"; loops: Animation.Infinite
+                    running: status.active; loops: Animation.Infinite
                     onRunningChanged: if (!running) dot.opacity = 1
                     NumberAnimation { to: 0.3; duration: 600; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 1; duration: 600; easing.type: Easing.InOutSine }
@@ -117,7 +122,7 @@ Rectangle {
             Label {
                 x: 17 * root.ux; anchors.verticalCenter: parent.top
                 u: root.u; tok: t; textStyle: t.dlabel
-                text: root.screenState === "connecting" ? "Connecting" : "Waiting for a device"
+                text: root.pinCode ? "Pairing" : root.screenState === "connecting" ? "Connecting" : "Waiting for a device"
             }
             Label {
                 y: 24 * root.uy - height / 2

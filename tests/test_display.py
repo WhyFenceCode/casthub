@@ -87,7 +87,8 @@ class TestApp(unittest.TestCase):
             s.connect(os.path.join(tmp, "casthub-ui.sock"))
             f = s.makefile("rwb")
             for m in ({"cmd": "state", "output": out_name, "state": "connecting", "device": "Phone"},
-                      {"cmd": "busy", "output": out_name, "text": "in use"}, {"cmd": "nope"}, {"cmd": "leave"}):
+                      {"cmd": "busy", "output": out_name, "text": "in use"}, {"cmd": "nope"}, {"cmd": "leave"},
+                      {"cmd": "pin", "output": out_name, "pin": "12345670"}, {"cmd": "pin", "output": out_name, "pin": "x1"}):
                 f.write(json.dumps(m).encode() + b"\n")
                 f.flush()
                 replies.append(json.loads(f.readline()))
@@ -101,7 +102,8 @@ class TestApp(unittest.TestCase):
         while t.is_alive() and deadline.isActive():
             qapp.processEvents()
         t.join(1)
-        self.assertEqual([r["ok"] for r in replies], [True, True, False, True])
+        self.assertEqual([r["ok"] for r in replies], [True, True, False, True, True, False])
+        self.assertEqual(root.property("pinCode"), "12345670")
         self.assertEqual(root.property("screenState"), "connecting")
         self.assertEqual(root.property("deviceName"), "Phone")
         self.assertEqual(root.property("busyText"), "in use")

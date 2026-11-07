@@ -60,7 +60,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", default="1080x633")
     ap.add_argument("--scheme", default="light", choices=["light", "dark"])
-    ap.add_argument("--only", help="screen name to render (idle, connecting, busy, leave)")
+    ap.add_argument("--only", help="screen name to render (idle, connecting, busy, pin, leave)")
     a = ap.parse_args()
     w, h = (int(v) for v in a.size.split("x"))
     app = QGuiApplication(sys.argv)
@@ -75,6 +75,7 @@ def main() -> int:
         "connecting": ("screen", {"screenState": "connecting", "deviceName": "Pixel Phone"}),
         "busy": ("screen", {"screenState": "streaming", "deviceName": "Pixel Phone",
                             "busyText": "Laptop tried to connect · Brand-1 is in use"}),
+        "pin": ("screen", {"pinCode": "12345670"}),
         "leave": ("leave", {"selected": 0}),
     }
     for name, (kind, props) in shots.items():

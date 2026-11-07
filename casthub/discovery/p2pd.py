@@ -63,6 +63,7 @@ class P2PDaemon:
         self.dnsmasq: subprocess.Popen | None = None
         self.peers: dict[str, int] = {}    # peer path → RTSP port from its WFD IE
         self.announced: set[str] = set()
+        self.pin = ""
 
     # ---- D-Bus helpers -------------------------------------------------------------
     async def call(self, path: str, iface: str, member: str, sig: str = "", body: list | None = None, dest: str = WPAS):
@@ -98,17 +99,20 @@ class P2PDaemon:
         await self.advertise()
 
     async def advertise(self) -> None:
+        host = socket.gethostname().split(".")[0]
+        # The MS-MICE attributes go *inside* wpa_supplicant's own WSC IE (VendorExtension), not
+        # in a second IE: Windows did not see them there and fell back to Wi-Fi Direct.
         conf = {"DeviceName": Variant("s", self.name[:32]),
                 "PrimaryDeviceType": Variant("ay", p2p.PRIMARY_DEVICE_TYPE),
-                "GOIntent": Variant("u", 15)}
+                "GOIntent": Variant("u", 15),
+                "VendorExtension": Variant("aay", [p2p.mice_vendor_payload(host)])}
         await self.set(self.dev, P2PDEV, "P2PDeviceConfig", "a{sv}", conf)
         await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements())
-        host = socket.gethostname().split(".")[0]
-        ie = p2p.wsc_ie(p2p.mice_vendor_extension(host))
+        # Remove the separate IE an earlier version added (harmless if absent).
+        old_ie = p2p.wsc_ie(p2p.mice_vendor_extension(host))
         for frame in (p2p.VENDOR_ELEM_PROBE_RESP_P2P, p2p.VENDOR_ELEM_PROBE_RESP_P2P_GO, p2p.VENDOR_ELEM_BEACON_P2P_GO):
             with contextlib.suppress(RuntimeError):
-                await self.call(self.dev, IFACE, "VendorElemRem", "iay", [frame, ie])
-            await self.call(self.dev, IFACE, "VendorElemAdd", "iay", [frame, ie])
+                await self.call(self.dev, IFACE, "VendorElemRem", "iay", [frame, old_ie])
         await self.listen()
         log.info("advertising %r (MS-MICE host name from this machine)", self.name)
 
@@ -123,8 +127,13 @@ class P2PDaemon:
             return False
         handler = {"GONegotiationRequest": self.on_go_request,
                    "ProvisionDiscoveryPBCRequest": self.on_pbc_request,
+                   "ProvisionDiscoveryRequestDisplayPin": self.on_pd_display_pin,
+                   "ProvisionDiscoveryRequestEnterPin": self.on_pd_enter_pin,
+                   "GONegotiationFailure": self.on_go_failure,
                    "GroupStarted": self.on_group_started,
                    "GroupFinished": self.on_group_finished}.get(msg.member)
+        if msg.member not in ("DeviceFound", "DeviceFoundProperties", "DeviceLost", "FindStopped"):
+            log.info("p2p signal %s", msg.member)
         if handler:
             asyncio.ensure_future(self._guard(handler(*msg.body)))
         return False
@@ -138,7 +147,22 @@ class P2PDaemon:
     async def on_pbc_request(self, peer: str, *_):
         log.info("push-button request")
 
-    async def on_go_request(self, peer: str, *_):
+    async def on_pd_display_pin(self, peer: str, pin: str, *_):
+        """The PC will ask its user for a PIN: show this one on the screen."""
+        self.show_pin(pin)
+
+    async def on_pd_enter_pin(self, peer: str, *_):
+        log.warning("the PC shows a PIN and wants it typed here; Cast Hub has no keypad (use its PIN prompt instead)")
+
+    async def on_go_failure(self, *_):
+        log.warning("Wi-Fi Direct group negotiation failed")
+        self.show_pin("")
+
+    def show_pin(self, pin: str) -> None:
+        self.pin = pin
+        self.broadcast({"event": "pin", "pin": pin})
+
+    async def on_go_request(self, peer: str, *args):
         if not self.cfg.p2p_address:
             log.warning("Wi-Fi Direct cast refused: set miracast.p2p_address in casthub.toml")
             return
@@ -147,15 +171,26 @@ class P2PDaemon:
             port = p2p.parse_wfd_rtsp_port(bytes(ies))
             if port:
                 self.peers[peer] = port
-        await self.call(self.dev, P2PDEV, "Connect", "a{sv}",
-                        [{"peer": Variant("o", peer), "wps_method": Variant("s", "pbc"),
-                          "go_intent": Variant("i", 15), "persistent": Variant("b", False)}])
+        dev_pw = args[0] if args else p2p.DEV_PW_PUSHBUTTON
+        opts = {"peer": Variant("o", peer), "go_intent": Variant("i", 15), "persistent": Variant("b", False)}
+        if dev_pw == p2p.DEV_PW_PUSHBUTTON:
+            opts["wps_method"] = Variant("s", "pbc")
+        elif dev_pw == p2p.DEV_PW_REGISTRAR_SPECIFIED:
+            log.warning("the PC displays a PIN; Cast Hub can only show one")
+            return
+        else:                       # the PC's user types a PIN: we display it
+            if not self.pin:
+                self.show_pin(p2p.wps_pin())
+            opts["wps_method"] = Variant("s", "display")
+            opts["pin"] = Variant("s", self.pin)
+        await self.call(self.dev, P2PDEV, "Connect", "a{sv}", [opts])
 
     async def on_group_started(self, props: dict):
         role = props.get("role", Variant("s", "")).value
         ifpath = props["interface_object"].value
         self.group_if = await self.get(ifpath, IFACE, "Ifname")
         log.info("group started, role %s", role)
+        self.show_pin("")
         if role != "GO":
             log.warning("we are not group owner; Wi-Fi Direct needs us as GO (no DHCP client here)")
             return
@@ -206,8 +241,27 @@ class P2PDaemon:
         for w in list(self.clients):
             w.write(line)
 
+    @staticmethod
+    def allowed(writer: asyncio.StreamWriter) -> bool:
+        """root, the casthub user, and admins (wheel: testing from the desktop)."""
+        import pwd
+        import struct as st
+        sock = writer.get_extra_info("socket")
+        try:
+            _pid, uid, gid = st.unpack("3i", sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, st.calcsize("3i")))
+            name = pwd.getpwuid(uid).pw_name
+            groups = {g.gr_name for g in grp.getgrall() if name in g.gr_mem} | {grp.getgrgid(gid).gr_name}
+        except (OSError, KeyError):
+            return False
+        return uid == 0 or name == "casthub" or bool(groups & {"casthub", "wheel"})
+
     async def on_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        if not self.allowed(writer):
+            writer.close()
+            return
         self.clients.add(writer)
+        if self.pin:
+            self.broadcast({"event": "pin", "pin": self.pin})
         try:
             while line := await reader.readline():
                 try:
@@ -225,9 +279,7 @@ class P2PDaemon:
         RUN.mkdir(exist_ok=True)
         SOCK.unlink(missing_ok=True)
         server = await asyncio.start_unix_server(self.on_client, str(SOCK))
-        with contextlib.suppress(KeyError):
-            os.chown(SOCK, 0, grp.getgrnam("casthub").gr_gid)
-        os.chmod(SOCK, 0o660)
+        os.chmod(SOCK, 0o666)        # who may talk is checked per connection (allowed())
         await self.start()
         async with server:
             await server.serve_forever()

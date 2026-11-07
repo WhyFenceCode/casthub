@@ -32,6 +32,7 @@ Item {
             u: bar.u; tok: bar.tok; textStyle: bar.tok.dlabel; color: bar.tok.muted
             text: bar.receiverName
         }
+        Battery { u: bar.u * 1.2; tok: bar.tok; textStyle: bar.tok.dlabel; anchors.verticalCenter: parent.verticalCenter }
         Label {
             id: logout
             visible: bar.showLogout

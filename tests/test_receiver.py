@@ -292,6 +292,18 @@ class TestDiscovery(unittest.TestCase):
         with self.assertRaises(ValueError):
             p2p.mice_vendor_extension("host.example")
 
+    def test_vendor_payload_is_the_attribute_value(self):
+        # wpa_supplicant adds the 0x1049 header itself; the payload starts with Microsoft's OUI.
+        payload = p2p.mice_vendor_payload("receiver-host")
+        self.assertEqual(payload[:3], bytes.fromhex("000137"))
+        self.assertEqual(p2p.mice_vendor_extension("receiver-host")[4:], payload)
+
+    def test_wps_pin(self):
+        self.assertTrue(p2p.wps_pin_valid("12345670"))
+        self.assertFalse(p2p.wps_pin_valid("12345678"))
+        for _ in range(200):
+            self.assertTrue(p2p.wps_pin_valid(p2p.wps_pin()))
+
     def test_dhcp_range(self):
         self.assertEqual(p2p.dhcp_range("192.0.2.1/24"), ("192.0.2.1", "192.0.2.2", "192.0.2.254", "255.255.255.0"))
 

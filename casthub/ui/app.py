@@ -8,6 +8,7 @@ Control socket ($XDG_RUNTIME_DIR/casthub-ui.sock, JSON lines; only this user can
     {"cmd": "leave"}                                      open the leave page (Ctrl+Alt+Esc)
     {"cmd": "state", "output": "eDP-1", "state": "connecting", "device": "<name>"}
     {"cmd": "busy", "output": "eDP-1", "text": "<message>"}  (empty text hides it)
+    {"cmd": "pin", "output": "eDP-1", "pin": "12345670"}     (Wi-Fi Direct pairing; empty hides it)
 The receiver hub (M3/M6) drives state and busy; casthub-leave sends "leave".
 No PIN here: leaving only returns to the login screen (owner decision, SPEC D7).
 """
@@ -31,6 +32,8 @@ from casthub import config as cfgmod
 from casthub.ui.qr import QrProvider
 
 log = logging.getLogger("casthub.ui")
+# The bar's battery level (uikit/Battery.qml) reads /sys/class/power_supply with XMLHttpRequest.
+os.environ.setdefault("QML_XHR_ALLOW_FILE_READ", "1")
 QML = Path(__file__).resolve().parent / "qml" / "DisplayScreen.qml"
 QR_FILE = Path("/run/casthub/hotspot-qr.txt")      # written by the hotspot service (root); holds the join code
 LEAVE = "/usr/libexec/casthub/casthub-leave"
@@ -160,7 +163,7 @@ class DisplayUI(QObject):
         cmd = msg["cmd"]
         if cmd == "leave":
             self.open_leave()
-        elif cmd in ("state", "busy"):
+        elif cmd in ("state", "busy", "pin"):
             v = self.views.get(msg["output"])
             if v is None:
                 raise KeyError(f"no screen {msg['output']!r}")
@@ -170,6 +173,11 @@ class DisplayUI(QObject):
                     raise ValueError(f"bad state {msg['state']!r}")
                 r.setProperty("screenState", msg["state"])
                 r.setProperty("deviceName", str(msg.get("device", "")))
+            elif cmd == "pin":
+                pin = str(msg.get("pin", ""))
+                if pin and not (pin.isdigit() and len(pin) in (4, 8)):
+                    raise ValueError("pin must be 4 or 8 digits")
+                r.setProperty("pinCode", pin)
             else:
                 r.setProperty("busyText", str(msg.get("text", "")))
         else:

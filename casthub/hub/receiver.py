@@ -63,6 +63,10 @@ class Receiver:
         await asyncio.sleep(6)
         await self.notify({"cmd": "busy", "output": self.output, "text": ""})
 
+    async def show_pin(self, pin: str) -> None:
+        log.info("%s: %s", self.name, "showing Wi-Fi Direct PIN" if pin else "PIN hidden")
+        await self.notify({"cmd": "pin", "output": self.output, "pin": pin})
+
     # ---- entry points -------------------------------------------------------------
     async def on_mice(self, conn: MiceConnection) -> None:
         """The PC keeps this socket open for the whole projection."""

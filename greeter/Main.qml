@@ -202,6 +202,7 @@ Rectangle {
         anchors.verticalCenterOffset: -24 * root.u
         spacing: 14 * root.u
         Label { u: root.u; tok: t; textStyle: t.label; color: t.muted; text: root.cfg("Location", ""); visible: text.length > 0 }
+        Battery { u: root.u; tok: t; anchors.verticalCenter: parent.verticalCenter }
         Label { u: root.u; tok: t; textStyle: t.label; text: Qt.formatTime(root.clockNow, "HH:mm") }
     }
     Rectangle { id: topRule; x: root.margin; y: 47 * root.u; width: root.width - 2 * root.margin; height: root.hair; color: t.fg }
