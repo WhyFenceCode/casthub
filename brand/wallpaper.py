@@ -5,6 +5,9 @@ grid (design pages 6-11), light and dark. Run at install time for the real scree
     python3 brand/wallpaper.py --out local/wallpaper-build --size 1920x1080 [--size WxH ...]
 
 The grid matches uikit/GridLines.qml: one line at each column edge, `line` colour at 40 %.
+
+With --lock it builds the lock-screen (and wake-from-sleep) background instead: the boot
+splash's black, the dark grid, and the finished signature (SPEC D22).
 """
 
 from __future__ import annotations
@@ -12,10 +15,14 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 import tomllib
 from pathlib import Path
 
 import cairo
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # run with python3 -I at install time
+import signature  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 FALLBACK_SIZES = ["1920x1080", "2560x1440", "3840x2160"]
@@ -55,6 +62,43 @@ def render(path: Path, t: dict, variant: str, width: int, height: int) -> None:
     surf.write_to_png(str(path))
 
 
+def render_lock(path: Path, t: dict, width: int, height: int) -> None:
+    """Black, dark grid, whole signature in the lower half (Plasma's clock and password
+    field sit above it)."""
+    surf = cairo.ImageSurface(cairo.FORMAT_RGB24, width, height)
+    ctx = cairo.Context(surf)
+    ctx.set_source_rgb(*hex_rgb(t["boot"]["bg"]))
+    ctx.paint()
+    lw = max(1, round(height / t["frame"]["height"]))
+    ctx.set_source_rgba(*hex_rgb(t["color"]["dark"]["line"]), 0.4)
+    for x in column_edges(t, width, height):
+        ctx.rectangle(x, 0, lw, height)
+    ctx.fill()
+    L, fl, col = signature.letters(), signature.flourish(), signature.colours()
+    x0, y0, x1, y1 = signature.bbox(L, fl)
+    k = 0.42 * width / (x1 - x0)                     # signature spans ~42 % of the width
+    ctx.translate((width - (x1 - x0) * k) / 2, height * 0.9 - (y1 - y0) * k)
+    ctx.scale(k, k)
+    ctx.translate(-x0, -y0)
+    signature.draw(ctx, L, fl, signature.duration(len(L)) + 1, col)
+    surf.write_to_png(str(path))
+
+
+def build_lock(out: Path, sizes: list[str]) -> None:
+    t = tokens()
+    if out.exists():
+        shutil.rmtree(out)
+    d = out / "contents" / "images"
+    d.mkdir(parents=True)
+    for s in sizes:
+        w, h = (int(v) for v in s.split("x"))
+        render_lock(d / f"{w}x{h}.png", t, w, h)
+    meta = {"KPlugin": {"Id": "CastHubLock", "Name": "Cast Hub lock", "Description": "Black, grid and signature",
+                        "License": "CC-BY-SA-4.0", "Authors": [{"Name": "Cast Hub"}]}}
+    (out / "metadata.json").write_text(json.dumps(meta, indent=4) + "\n")
+    print(f"built {out}: {', '.join(sizes)}")
+
+
 def build(out: Path, sizes: list[str]) -> None:
     t = tokens()
     if out.exists():
@@ -82,9 +126,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--size", action="append", default=[], help="WxH; repeatable")
+    ap.add_argument("--lock", action="store_true", help="build the lock-screen background instead")
     a = ap.parse_args()
     sizes = list(dict.fromkeys(a.size + FALLBACK_SIZES))
-    build(a.out, sizes)
+    (build_lock if a.lock else build)(a.out, sizes)
     return 0
 
 

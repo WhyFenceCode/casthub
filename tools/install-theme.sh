@@ -78,6 +78,11 @@ runuser -u "$user" -- python3 -I "$repo/brand/wallpaper.py" --out "$build" --siz
 rm -rf /usr/share/wallpapers/CastHub
 cp -r --no-preserve=ownership "$build" /usr/share/wallpapers/CastHub
 chmod -R u=rwX,go=rX /usr/share/wallpapers/CastHub
+# Lock / wake-from-sleep background: black, grid, signature.
+runuser -u "$user" -- python3 -I "$repo/brand/wallpaper.py" --lock --out "$build-lock" --size "${w}x${h}"
+rm -rf /usr/share/wallpapers/CastHubLock
+cp -r --no-preserve=ownership "$build-lock" /usr/share/wallpapers/CastHubLock
+chmod -R u=rwX,go=rX /usr/share/wallpapers/CastHubLock
 
 step "Konsole (terminal is always dark)"
 install -m644 "$repo/modes/console/CastHub.colorscheme" "$repo/modes/workstation/CastHub.profile" \
@@ -85,7 +90,7 @@ install -m644 "$repo/modes/console/CastHub.colorscheme" "$repo/modes/workstation
 install -m644 "$repo/system/profile.d/casthub-terminal.sh" /etc/profile.d/casthub-terminal.sh
 
 step "System-wide defaults in /etc/xdg"
-for f in kdeglobals konsolerc kwinrc plasmashellrc; do
+for f in kdeglobals konsolerc kwinrc plasmashellrc kscreenlockerrc; do
   [ -e "/etc/xdg/$f" ] && [ ! -e "/etc/xdg/$f.casthub-backup" ] && cp -a "/etc/xdg/$f" "/etc/xdg/$f.casthub-backup"
 done
 kw() { kwriteconfig6 --file "/etc/xdg/$1" --group "$2" --key "$3" "$4"; }
@@ -101,12 +106,12 @@ kw kdeglobals General fixed "DM Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 kw kdeglobals WM activeFont "Instrument Sans,10,-1,5,600,0,0,0,0,0,0,0,0,0,0,1"
 kw konsolerc "Desktop Entry" DefaultProfile CastHub.profile
 # Shell package, views script, decoration, Meta key, Konsole chrome (SPEC D17).
-for f in konsolerc kwinrc plasmashellrc; do python3 -I "$repo/tools/lib/merge-ini.py" "$repo/system/xdg/$f" "/etc/xdg/$f"; done
-chmod 644 /etc/xdg/kdeglobals /etc/xdg/konsolerc /etc/xdg/kwinrc /etc/xdg/plasmashellrc
+for f in konsolerc kwinrc plasmashellrc kscreenlockerrc; do python3 -I "$repo/tools/lib/merge-ini.py" "$repo/system/xdg/$f" "/etc/xdg/$f"; done
+chmod 644 /etc/xdg/kdeglobals /etc/xdg/konsolerc /etc/xdg/kwinrc /etc/xdg/plasmashellrc /etc/xdg/kscreenlockerrc
 cat /etc/xdg/kdeglobals
 
 restorecon -R /usr/lib/casthub /usr/libexec/casthub /etc/casthub /usr/share/casthub /usr/share/fonts/casthub /usr/share/sddm/themes/casthub /usr/share/color-schemes \
-  /usr/share/plasma /usr/share/kwin /usr/share/wallpapers/CastHub /usr/share/konsole /etc/xdg 2>/dev/null || true
+  /usr/share/plasma /usr/share/kwin /usr/share/wallpapers/CastHub /usr/share/wallpapers/CastHubLock /usr/share/konsole /etc/xdg 2>/dev/null || true
 
 if [ "${1:-}" = "--splash" ]; then
   step "Boot splash"

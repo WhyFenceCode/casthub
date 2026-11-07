@@ -140,3 +140,30 @@ class TestSystemDefaults(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLeaveScreens(unittest.TestCase):
+    def test_logout_screen_answers_the_greeter(self):
+        qml = (SHELL / "plasma-shell" / "org.casthub.desktop" / "contents" / "logout" / "Logout.qml").read_text()
+        for sig in ("logoutRequested", "haltRequested", "rebootRequested", "suspendRequested", "cancelRequested",
+                    "lockScreenRequested"):
+            self.assertIn(f"signal {sig}(", qml)
+        self.assertIn("ShutdownType.ShutdownTypeDefault", qml)
+
+    def test_top_bar_log_out_offers_every_choice(self):
+        qml = (SHELL / "plasmoids" / "org.casthub.clock" / "contents" / "ui" / "main.qml").read_text()
+        self.assertIn('member: "promptAll"', qml)
+
+    def test_lock_screen_uses_signature_background(self):
+        k = ini(ROOT / "system" / "xdg" / "kscreenlockerrc")
+        self.assertEqual(k[(("Greeter", "Wallpaper", "org.kde.image", "General"), "Image")],
+                         "/usr/share/wallpapers/CastHubLock/")
+
+    def test_lock_background_renders(self):
+        import tempfile
+
+        import wallpaper
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "lock.png"
+            wallpaper.render_lock(out, wallpaper.tokens(), 320, 180)
+            self.assertTrue(out.stat().st_size > 0)

@@ -127,3 +127,16 @@ agenda hidden when no calendar is set up unless it is a holiday; thin bar everyw
 - Owner check: boot splash froze half-written when Plymouth handed over to the login screen,
   and its background should be pure black. Plymouth now draws the full signature on quit, and
   the splash uses `[boot] bg = #000000` (frames, labels and screen).
+- Owner check, round 2:
+  - Plasma's leave screen (logout confirmation) is ours now (`contents/logout/Logout.qml` in the
+    shell package): the Display leave-page frame, right-snapped choices, keys, Plasma's
+    countdown kept for single-action requests. The top bar's Log out opens it with all choices.
+  - Lock / wake-from-sleep screen: Plasma's unlock UI on a black grid background with the full
+    signature (`brand/wallpaper.py --lock`, `/etc/xdg/kscreenlockerrc`). Plasma's unlock logic is
+    kept on purpose: a broken lock screen locks the owner out.
+  - Login screen "Switch user" cycled through a one-user list, so it did nothing. It now steps on
+    to "Other user", where any account name can be typed.
+  - Display: "Log out" in the bar opens the leave page; the leave page's first choice is
+    "Log out"; "Passthrough setup" is listed as Later (D21, M10). The ways-to-connect block and
+    the leave choices are right-snapped grids, each key on one line.
+  - KWin blur off: unused by the design, and it failed every frame on this GPU.

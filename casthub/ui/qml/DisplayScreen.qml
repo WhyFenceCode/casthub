@@ -62,6 +62,8 @@ Rectangle {
             u: root.u; ux: root.ux; uy: root.uy; tok: t
             margin: root.margin; modeX: root.colX(4)
             receiverName: root.receiverName
+            showLogout: true
+            onLogoutRequested: root.leaveOpen = true
         }
 
         // Big line: the time, or the sender's name while connecting.
@@ -124,45 +126,41 @@ Rectangle {
             }
         }
 
-        // How to connect, one row per way in.
-        Column {
-            x: 290 * root.ux; y: 494 * root.uy
-            spacing: 14 * root.uy
+        // How to connect, one row per way in. Snapped to the right: against the QR code when
+        // it is shown, else the right margin. Each key stays on one line.
+        Grid {
+            id: ways
+            anchors.right: qr.visible ? qr.left : parent.right
+            anchors.rightMargin: qr.visible ? 2 * root.gutter : root.margin
+            y: 494 * root.uy
+            columns: 3
+            columnSpacing: 18 * root.ux
+            rowSpacing: 14 * root.uy
+            verticalItemAlignment: Grid.AlignVCenter
+            readonly property var rows: {
+                var r = []
+                if (root.airplay) r.push({ k: "Apple · AirPlay", v: "Control Centre › Screen Mirroring › " + root.receiverName })
+                r.push({ k: "Windows · Miracast", v: "Press Win + K › " + root.receiverName })
+                if (root.qrPayload) r.push({ k: "Anything else", v: "Scan the code to pair" })
+                return r
+            }
             Repeater {
-                model: {
-                    var rows = []
-                    if (root.airplay) rows.push({ k: "Apple · AirPlay", v: "Control Centre › Screen Mirroring › " + root.receiverName })
-                    rows.push({ k: "Windows · Miracast", v: "Press Win + K › " + root.receiverName })
-                    if (root.qrPayload) rows.push({ k: "Anything else", v: "Scan the code to pair" })
-                    return rows
-                }
-                Item {
-                    required property var modelData
+                model: ways.rows.length * 3
+                Label {
                     required property int index
-                    width: 600 * root.ux
-                    height: key.height
-                    Label { y: (key.lineH - height) / 2 - 1 * root.uy; u: root.u; tok: t; textStyle: t.dnum; color: t.muted; text: root.pad(index + 1) }
-                    Label {
-                        id: key
-                        readonly property real lineH: 15 * root.uy
-                        x: 35 * root.ux; width: 135 * root.ux
-                        u: root.u; tok: t; textStyle: t.dlabel
-                        wrapMode: Text.WordWrap
-                        lineHeightMode: Text.FixedHeight; lineHeight: lineH
-                        text: modelData.k
-                    }
-                    Label {
-                        id: val
-                        x: 185 * root.ux; y: (key.lineH - height) / 2 + 1 * root.uy
-                        u: root.u; tok: t; textStyle: t.dbody
-                        text: modelData.v
-                    }
+                    readonly property var row: ways.rows[Math.floor(index / 3)]
+                    readonly property int part: index % 3
+                    u: root.u; tok: t
+                    textStyle: part === 0 ? t.dnum : part === 1 ? t.dlabel : t.dbody
+                    color: part === 0 ? t.muted : t.fg
+                    text: part === 0 ? root.pad(Math.floor(index / 3) + 1) : part === 1 ? row.k : row.v
                 }
             }
         }
 
         // Hotspot QR. Always dark modules on a light ground so phones read it in either theme.
         Rectangle {
+            id: qr
             visible: root.qrPayload !== ""
             readonly property real side: 110 * root.u
             readonly property real pad: root.dark ? 6 * root.u : 0

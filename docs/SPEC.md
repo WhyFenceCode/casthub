@@ -29,6 +29,8 @@ Nov 7, 2026 · Torsten
 | D18 | Status area | Plasma's system tray stays (Wi-Fi, sound, battery, notifications must keep working) but is styled so it reads as part of the top bar. If that can't be made seamless, fall back to text only. |
 | D19 | Agenda | From the KDE calendars (Akonadi: Merkuro / KOrganizer accounts) plus public holidays. Hidden when there is nothing to show, but a holiday always shows. |
 | D20 | Top bar height | One thin bar (the Desktop-view height, design page 10) on all three tabs. |
+| D21 | Passthrough setup (later, M10) | The Display leave page lists "Passthrough setup" (marked Later until built). There the owner picks a Miracast target (a TV or projector); Cast Hub then acts as an AirPlay receiver and sends what it receives on to that target over Miracast (Cast Hub as Miracast *source*). Needs the receiver hub (M3), AirPlay (M5) and a Miracast sender. |
+| D22 | Leaving and locking | Workstation: "Log out" in the top bar (Plasma's confirmation). Display: "Log out" in the bar and first on the leave page. Every Plasma screen a user can meet (logout confirmation, lock/sleep screen with the signature, on-screen displays, switch user) is themed from the tokens. |
 
 ---
 
@@ -284,7 +286,8 @@ M1 (Fedora installed) and M2 (Miracast go/no-go connection tests) are done.
 | M4 | Multi-port test | Two mDNS receivers (7250, 7251): Win + K lists both and a cast to 7251 plays; layout mode chosen from the result |
 | M5 | AirPlay | One UxPlay per screen; an iPhone mirrors to a named screen |
 | M6 | Kiosk session | Display mode boots to idle screens; busy rule works; Ctrl + Alt + Esc opens the leave page during a stream |
-| M9 | Desktop shell | The mockup desktop (top bar, Console / Files / Desktop, today panel, meters) installed for a fresh user with no manual setup |
+| M9 | Desktop shell | The mockup desktop (top bar, Console / Files / Desktop, today panel, meters) installed for a fresh user with no manual setup; logout, lock and switch-user screens themed and working (D22) |
+| M10 | Passthrough | From the leave page, pick a Miracast target; an iPhone mirroring to Cast Hub over AirPlay shows on that target (D21) |
 
 ## Constraints and open questions
 

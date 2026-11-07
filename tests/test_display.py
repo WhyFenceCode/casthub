@@ -120,6 +120,11 @@ class TestApp(unittest.TestCase):
         chosen = []
         root.leaveChosen.connect(chosen.append)
         ui.on_action = lambda r, a: chosen.append(("ran", a))   # don't actually reboot the test machine
+        # Passthrough setup is listed but not built yet: Enter only explains that.
+        QTest.keyClick(view, Qt.Key.Key_Return)
+        self.assertEqual(chosen, [])
+        self.assertNotEqual(page.property("error"), "")
+        QTest.keyClick(view, Qt.Key.Key_Down)
         QTest.keyClick(view, Qt.Key.Key_Return)
         self.assertIn("reboot", chosen)
         QTest.keyClick(view, Qt.Key.Key_Escape)

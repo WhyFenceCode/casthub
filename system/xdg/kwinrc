@@ -4,6 +4,8 @@
 org.casthub.viewsEnabled=true
 slideEnabled=false
 fadedesktopEnabled=true
+# No blur in the design; on this GPU it also fails every frame (offscreen framebuffer errors).
+blurEnabled=false
 
 [org.kde.kdecoration2]
 library=org.kde.kwin.aurorae

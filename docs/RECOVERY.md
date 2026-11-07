@@ -43,6 +43,10 @@ Then log out and in. Plasma's old panel layout was never touched
 (`~/.config/plasma-org.kde.plasma.desktop-appletsrc`). Without logging out, as the user:
 `qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.changeShell org.kde.plasma.desktop`.
 `tools/adopt-desktop.sh` keeps a copy of the files it touches in `local/desktop-backup-*`.
+Lock screen back to Plasma's default background:
+`sudo kwriteconfig6 --file /etc/xdg/kscreenlockerrc --group Greeter --key WallpaperPlugin --delete`.
+If the lock screen itself ever fails ("The screen locker is broken"), switch to a text console
+(Ctrl+Alt+F3), log in, and run `loginctl unlock-sessions`.
 If the top bar is gone and nothing responds: Ctrl+Alt+F3, log in, run the commands above.
 
 ## Roll the whole system back to a snapshot

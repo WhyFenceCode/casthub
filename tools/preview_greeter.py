@@ -25,6 +25,7 @@ from PySide6.QtCore import (  # noqa: E402
     QAbstractListModel,
     QByteArray,
     QDateTime,
+    QMetaObject,
     QModelIndex,
     QObject,
     Qt,
@@ -118,6 +119,7 @@ def main() -> int:
     ap.add_argument("--size", default="1080x675")
     ap.add_argument("--admin", action="store_true", help="make the preview user an admin")
     ap.add_argument("--press", default="", help="comma-separated keys to send after load, e.g. Down,Return")
+    ap.add_argument("--switch-user", action="store_true", help="press Switch user until it reaches Other user")
     ap.add_argument("--out", default="")
     a = ap.parse_args()
 
@@ -193,6 +195,10 @@ def main() -> int:
             print(f"pressed {k}: selected={rootobj.property('selected')}")
 
     def grab():
+        if a.switch_user:
+            QMetaObject.invokeMethod(rootobj, "switchUser")
+            while not rootobj.property("otherUser"):   # step on to "Other user"
+                QMetaObject.invokeMethod(rootobj, "switchUser")
         press_keys()
         QTimer.singleShot(400, lambda: (view.grabWindow().save(str(out)), print(out), app.quit()))
 

@@ -93,7 +93,16 @@ Rectangle {
     // ---- users -------------------------------------------------------------
     property var users: []
     property int userIdx: 0
-    readonly property var user: users.length ? users[userIdx] : ({ name: "", realName: "" })
+    // One past the list is "Other user": type any account name (hidden accounts, or a
+    // machine with a single listed user, where Switch user would otherwise do nothing).
+    readonly property bool otherUser: userIdx >= users.length
+    readonly property var user: otherUser ? ({ name: otherName.text.trim(), realName: "" }) : users[userIdx]
+    function switchUser() {
+        userIdx = (userIdx + 1) % (users.length + 1)
+        password.text = ""
+        message = ""
+        if (otherUser) { otherName.text = ""; otherName.forceActiveFocus() } else password.forceActiveFocus()
+    }
     Repeater {
         model: typeof userModel !== "undefined" ? userModel : 0
         delegate: Item {
@@ -129,6 +138,7 @@ Rectangle {
         if (busy) return
         var m = mode
         if (!modeAvailable(m)) { say("Mode not installed"); return }
+        if (m.password && user.name === "") { say("Type a user name"); otherName.forceActiveFocus(); return }
         if (m.admin && !isAdmin(user.name)) { say("Console is for admin accounts only"); return }
         busy = true
         if (m.password) sddm.login(user.name, password.text, sessionIndex[m.file])
@@ -265,18 +275,44 @@ Rectangle {
                 width: 36 * root.u; height: width; radius: width / 2
                 y: 1 * root.u
                 color: t.well
-                Label { anchors.centerIn: parent; u: root.u; tok: t; textStyle: t.label; text: root.initials(root.user.realName) }
+                Label { anchors.centerIn: parent; u: root.u; tok: t; textStyle: t.label; text: root.otherUser ? "?" : root.initials(root.user.realName) }
             }
             Column {
                 anchors.left: avatar.right
                 anchors.leftMargin: 11 * root.u
                 anchors.verticalCenter: avatar.verticalCenter
                 spacing: 3 * root.u
-                Label { u: root.u; tok: t; textStyle: t.name; text: root.user.realName || "No users" }
+                Label { visible: !root.otherUser; u: root.u; tok: t; textStyle: t.name; text: root.user.realName }
                 Label {
+                    visible: !root.otherUser
                     u: root.u; tok: t; textStyle: t.label; color: t.muted
                     font.capitalization: Font.MixedCase
                     text: root.user.name + "@" + (typeof sddm !== "undefined" ? sddm.hostName : "")
+                }
+                // Other user: the name line becomes a field.
+                Item {
+                    visible: root.otherUser
+                    width: signIn.width - avatar.width - 11 * root.u; height: nameProbe.height
+                    Label { id: nameProbe; visible: otherName.text === ""; u: root.u; tok: t; textStyle: t.name; color: t.muted; text: "User name" }
+                    TextInput {
+                        id: otherName
+                        width: parent.width
+                        color: t.fg
+                        font: nameProbe.font
+                        enabled: !root.busy
+                        Keys.priority: Keys.BeforeItem
+                        Keys.onPressed: function (e) {
+                            if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Tab) { password.forceActiveFocus(); e.accepted = true }
+                        }
+                        onTextChanged: root.message = ""
+                        cursorDelegate: Rectangle { width: Math.max(1, root.u); color: t.accent; visible: otherName.activeFocus }
+                    }
+                }
+                Label {
+                    visible: root.otherUser
+                    u: root.u; tok: t; textStyle: t.label; color: t.muted
+                    font.capitalization: Font.MixedCase
+                    text: "Other user@" + (typeof sddm !== "undefined" ? sddm.hostName : "")
                 }
             }
             Label { y: 57 * root.u - height / 2; u: root.u; tok: t; textStyle: t.label; color: t.muted; text: "Password" }
@@ -351,12 +387,9 @@ Rectangle {
             spacing: 8 * root.u
             PillButton {
                 u: root.u; tok: t; kind: "outline"; text: "Switch user"
-                enabled: root.users.length > 0
                 onClicked: {
                     if (!root.mode.password) { root.pick(0); return }   // from Display: go to sign-in
-                    root.userIdx = (root.userIdx + 1) % root.users.length
-                    password.text = ""
-                    password.forceActiveFocus()
+                    root.switchUser()
                 }
             }
             PillButton {

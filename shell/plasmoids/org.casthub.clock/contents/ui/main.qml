@@ -1,6 +1,6 @@
 // "● 01:06" at the right of the top bar (design page 10), then "Log out" (owner request:
 // Workstation needs a way out). Log out opens Plasma's own confirmation, which can also
-// restart or shut down.
+// restart, shut down, sleep or lock (all choices, no countdown).
 import QtQuick
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
@@ -22,7 +22,7 @@ PlasmoidItem {
     function logout() {
         DBus.SessionBus.asyncCall({
             service: "org.kde.LogoutPrompt", path: "/LogoutPrompt",
-            iface: "org.kde.LogoutPrompt", member: "promptLogout", arguments: []
+            iface: "org.kde.LogoutPrompt", member: "promptAll", arguments: []
         })
     }
 

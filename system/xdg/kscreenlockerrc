@@ -1,0 +1,8 @@
+# Lock screen, also shown when waking from sleep (SPEC D22): the black signature background.
+# Plasma's own unlock UI sits on top. Merged into /etc/xdg/kscreenlockerrc by
+# tools/install-theme.sh.
+[Greeter]
+WallpaperPlugin=org.kde.image
+
+[Greeter][Wallpaper][org.kde.image][General]
+Image=/usr/share/wallpapers/CastHubLock/
