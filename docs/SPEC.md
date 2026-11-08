@@ -196,8 +196,14 @@ Out of scope for v1: DTLS media encryption, PIN pairing, and sending input back 
 
 ## Apple: AirPlay via UxPlay
 
-- One UxPlay process under the receiver's name, its video shown on every screen like Miracast
-  (layout `mirror_all`).
+- One UxPlay process under the receiver's name (`-n <name> -nh`, usual ports), its video shown
+  on every screen like Miracast (layout `mirror_all`).
+- UxPlay only speaks AirPlay: `-vrtp` / `-artp` hand the H.264 and the decoded audio to our
+  player on localhost (RTP), so AirPlay plays like a Miracast cast: hardware decode, every
+  screen, a video process the hub can kill. The hub follows UxPlay's log for the cast's start
+  and end; an AirPlay cast is one more source of the receiver (same busy policy; when busy,
+  UxPlay is restarted, which drops the iPhone).
+- After each cast UxPlay restarts under the receiver's new name with a new device ID (D26).
 - Senders must be on the same network or the Cast Hub hotspot.
 - Known limits: iPhones mirror only; portrait phones show with side bars; DRM apps usually
   show black.
@@ -228,7 +234,7 @@ screens.
 | Wi-Fi Direct | wpa_supplicant P2P over D-Bus (`dbus-fast`) for discovery; NetworkManager (`nmcli`) forms the group |
 | mDNS | Avahi over D-Bus |
 | Kiosk | Sway, controlled over its IPC socket (`i3ipc`) |
-| AirPlay | UxPlay, one subprocess per screen |
+| AirPlay | UxPlay (Fedora package), one subprocess; its RTP output plays in our player |
 | Login | SDDM with a custom QML theme (D6) |
 | Services | systemd units and targets; config in TOML (`tomllib`) |
 

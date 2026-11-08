@@ -21,9 +21,10 @@ run=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 state="$run/casthub-panel.swaysock"
 
 # The panel's processes: hub restart loop first (so it doesn't start a new hub), then hub,
-# video players, UI and the nested Sway.
+# video players, the hub's UxPlay, UI and the nested Sway.
 PATTERNS=('while \[ -S "\$SWAYSOCK" \]; do /usr/libexec/casthub/casthub-hub'
-          'casthub\.hub\.__main__' 'casthub\.media\.player' 'casthub\.ui\.app'
+          'casthub\.hub\.__main__' 'casthub\.media\.player' 'uxplay .*-vrtp config-interval=1 ! udpsink host=127\.0\.0\.1'
+          'casthub\.ui\.app'
           'sway -c /usr/share/casthub/display/panel\.conf')
 
 panel_pids() {

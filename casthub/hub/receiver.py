@@ -32,7 +32,7 @@ class Source:
     addr: str
     rtsp_port: int
     name: str
-    via: str                                # mice | p2p
+    via: str                                # mice | p2p | airplay
     stop: asyncio.Event = field(default_factory=asyncio.Event)
 
 
@@ -42,9 +42,10 @@ class Receiver:
                  pipeline_factory: Callable[..., player.PlayerProcess] = player.PlayerProcess,
                  on_ended: Callable[[Receiver], Awaitable[None]] | None = None,
                  size_now: Callable[[str], Awaitable[tuple[int, int] | None]] | None = None,
-                 mirrors: tuple[str, ...] = ()) -> None:
+                 mirrors: tuple[str, ...] = (), airplay_ports: tuple[int, int] = (0, 0)) -> None:
         self.name, self.output, self.size = name, output, size
         self.mirrors = tuple(m for m in mirrors if m != output)
+        self.airplay_ports = airplay_ports          # (video, audio) RTP from UxPlay on localhost
         self.size_now = size_now          # the output's size right now (a window can be resized)
         self.on_ended = on_ended          # after each cast: the hub gives the receiver a new name
         # The name is shown only once PCs can find it (mDNS, Wi-Fi Direct): the hub calls
@@ -133,6 +134,12 @@ class Receiver:
     async def on_p2p_source(self, addr: str, rtsp_port: int, name: str) -> None:
         await self.accept(Source(addr, rtsp_port, name, "p2p"))
 
+    async def on_airplay(self, device: str) -> Source | None:
+        """UxPlay has an iPhone: the cast's Source (UxPlay sets its stop event when the iPhone
+        stops), or None when busy (UxPlay then drops the iPhone)."""
+        src = Source("", 0, device or "iPhone", "airplay")
+        return src if await self.accept(src) else None
+
     def on_p2p_gone(self, addr: str) -> None:
         if self.current and self.current.via == "p2p" and self.current.addr == addr:
             self.current.stop.set()
@@ -156,7 +163,74 @@ class Receiver:
                 await self.task
 
     # ---- one projection -------------------------------------------------------------
+    async def _start_player(self, spec: media.MediaSpec, first_frame: asyncio.Event,
+                            on_error: Callable[[str], object]) -> player.PlayerProcess:
+        pipe = self.pipeline_factory(spec, first_frame.set, on_error)
+        try:
+            await pipe.start()
+        except RuntimeError as e:
+            # Seen once with a real PC, not reproducible since: retry, then fall back to software decoding.
+            log.warning("%s: %s; retrying with %s", self.name, e, "avdec_h264")
+            await asyncio.sleep(0.5)
+            pipe = self.pipeline_factory(dataclasses.replace(spec, decoder="avdec_h264"), first_frame.set, on_error)
+            await pipe.start()
+        return pipe
+
+    async def _finish(self, src: Source) -> None:
+        """After every cast, however it ended: back to idle, then a new name."""
+        if self.current is src:
+            self.current = None
+        if self.on_ended:
+            self.name_ready = False         # Loading, while the hub sets up a new name
+        await self.set_state("idle")
+        if self.on_ended:
+            # Not awaited here: a new name can take seconds (Wi-Fi Direct address), and a
+            # PC may connect meanwhile.
+            self.ended_task = asyncio.create_task(self._ended())
+
+    async def run_airplay(self, src: Source) -> None:
+        """An AirPlay cast: UxPlay already did the handshake; play its RTP until it says stop.
+        No link watch: an iPhone sends no frames while its screen doesn't change, and UxPlay
+        notices a lost iPhone itself (-reset)."""
+        loop = asyncio.get_running_loop()
+        first_frame, failed = asyncio.Event(), loop.create_future()
+        pipe = None
+        try:
+            if self.size_now:
+                with contextlib.suppress(Exception):
+                    self.size = await self.size_now(self.output) or self.size
+            await self.set_state("connecting", src.name)
+            video, audio = self.airplay_ports
+            spec = media.default_spec(video, f"Cast Hub {self.name}", self.output, self.mirrors,
+                                      source="airplay", audio_port=audio)
+            pipe = await self._start_player(spec, first_frame,
+                                            lambda e: failed.done() or failed.set_result(e))
+            log.info("%s: AirPlay from %r", self.name, src.name)
+
+            async def frame_watch():
+                await first_frame.wait()
+                await media.place_on_outputs(self.outputs, getattr(pipe, "pid", None))
+                await self.set_state("streaming", src.name)
+
+            watch = asyncio.create_task(frame_watch())
+            tasks = {asyncio.create_task(src.stop.wait()), asyncio.ensure_future(failed)}
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            watch.cancel()
+            for t in pending:
+                t.cancel()
+            why = next(iter(done)).result()
+            log.info("%s: ended (%s)", self.name, why if isinstance(why, str) else "stopped")
+        except Exception:
+            log.exception("%s: AirPlay stream failed", self.name)
+        finally:
+            if pipe:
+                pipe.stop()
+            await self._finish(src)
+
     async def run(self, src: Source) -> None:
+        if src.via == "airplay":
+            await self.run_airplay(src)
+            return
         loop = asyncio.get_running_loop()
         first_frame, failed = asyncio.Event(), loop.create_future()
         pipe, sink = None, None
@@ -167,16 +241,8 @@ class Receiver:
             sink = RtspSink(src.addr, src.rtsp_port, SinkCaps(self.size[0], self.size[1], self.rtp_port, self.name))
             await self.set_state("connecting", src.name)
             spec = media.default_spec(self.rtp_port, f"Cast Hub {self.name}", self.output, self.mirrors)
-            on_error = lambda e: failed.done() or failed.set_result(e)  # noqa: E731
-            pipe = self.pipeline_factory(spec, first_frame.set, on_error)
-            try:
-                await pipe.start()
-            except RuntimeError as e:
-                # Seen once with a real PC, not reproducible since: retry, then fall back to software decoding.
-                log.warning("%s: %s; retrying with %s", self.name, e, "avdec_h264")
-                await asyncio.sleep(0.5)
-                pipe = self.pipeline_factory(dataclasses.replace(spec, decoder="avdec_h264"), first_frame.set, on_error)
-                await pipe.start()
+            pipe = await self._start_player(spec, first_frame,
+                                            lambda e: failed.done() or failed.set_result(e))
             neg = await sink.connect()
             log.info("%s: negotiated %s via %s", self.name, neg.video, src.via)
 
@@ -220,12 +286,4 @@ class Receiver:
             if sink:
                 with contextlib.suppress(Exception):
                     await sink.teardown()
-            if self.current is src:
-                self.current = None
-            if self.on_ended:
-                self.name_ready = False         # Loading, while the hub sets up a new name
-            await self.set_state("idle")
-            if self.on_ended:
-                # Not awaited here: a new name can take seconds (Wi-Fi Direct address), and a
-                # PC may connect meanwhile.
-                self.ended_task = asyncio.create_task(self._ended())
+            await self._finish(src)

@@ -385,6 +385,94 @@ class TestMirrorAll(unittest.TestCase):
         self.assertEqual(player.decode_spec(player.encode_spec(spec)), spec)
 
 
+FAKE_UXPLAY = """#!/usr/bin/python3 -I
+import sys, time
+print("Initialized server socket(s)", flush=True)
+time.sleep(0.2)
+print("connection request from <iphone> Phone (iPhone99,9) with deviceID = 00:00:5e:00:53:01", flush=True)
+time.sleep(0.4)
+print("begin video stream wxh = 1920x1080; source 1170x2532", flush=True)
+time.sleep(0.4)
+print("video_reset: type = RTP_Shutdown", flush=True)
+time.sleep(30)
+"""
+
+
+class TestAirPlay(unittest.TestCase):
+    def test_log_lines(self):
+        from casthub.airplay.uxplay import parse_line
+        ev = parse_line("connection request from <owner>'s iPhone (iPhone99,9) with deviceID = 00:00:5e:00:53:01")
+        self.assertEqual((ev.kind, ev.device), ("connect", "<owner>'s iPhone"))
+        self.assertEqual(parse_line("begin video stream wxh = 1920x1080; source 1170x2532").kind, "video")
+        for end in ("video_reset: type = RTP_Shutdown", "Open connections: 0",
+                    "***ERROR lost connection with client (network problem?)"):
+            self.assertEqual(parse_line(end).kind, "ended")
+        self.assertIsNone(parse_line("Open connections: 1"))
+        self.assertIsNone(parse_line("raop_ntp stopping time thread"))
+
+    def test_args(self):
+        from casthub.airplay.uxplay import uxplay_args
+        a = uxplay_args("CAST-ABCDE", (1366, 768), 1032, 1034, "00:00:5e:00:53:01", replace=True)
+        a = a[a.index("uxplay"):]
+        self.assertEqual(a[:3], ["uxplay", "-n", "CAST-ABCDE"])
+        self.assertIn("-nh", a)
+        self.assertEqual(a[a.index("-s") + 1], "1366x768@60")
+        self.assertIn("port=1032", a[a.index("-vrtp") + 1])
+        self.assertIn("host=127.0.0.1", a[a.index("-artp") + 1])
+        self.assertIn("-nohold", a)
+        self.assertNotIn("-nohold", uxplay_args("n", (1, 1), 1, 2, "x"))
+
+    def test_pipeline(self):
+        desc = media.describe(media.default_spec(1032, "t", "OUT-1", ("OUT-2",), source="airplay", audio_port=1034))
+        for part in ("rtph264depay", "rtpL16depay", "port=1034", "tee name=vt", "name=vsink1", "address=127.0.0.1"):
+            self.assertIn(part, desc)
+        self.assertNotIn("tsdemux", desc)
+        silent = media.describe(media.default_spec(1032, "t", source="airplay"))
+        self.assertNotIn("rtpL16depay", silent)          # no audio port: no audio branch
+
+    def test_cast_through_uxplay(self):
+        import os
+        import tempfile
+
+        from casthub.airplay.uxplay import UxPlay
+
+        async def go(tmp):
+            fake = Path(tmp) / "uxplay"
+            fake.write_text(FAKE_UXPLAY)
+            os.chmod(fake, 0o755)
+            states = []
+
+            async def notify(msg):
+                if msg["cmd"] == "state":
+                    states.append((msg["state"], msg["device"]))
+            rec = Receiver("CAST-ABCDE", "OUT-1", (1920, 1080), 0, 1028, "reject", notify, FakePipeline,
+                           airplay_ports=(1032, 1034))
+            ux = UxPlay(rec, 1032, 1034, binary=str(fake))
+            await ux.start()
+            for _ in range(100):
+                if ("idle", "") in states[1:]:
+                    break
+                await asyncio.sleep(0.05)
+            spec = FakePipeline.instances[-1].spec
+            await ux.stop()
+            return states, spec
+        with tempfile.TemporaryDirectory() as tmp:
+            states, spec = asyncio.run(go(tmp))
+        self.assertIn(("connecting", "<iphone> Phone"), states)
+        self.assertIn(("streaming", "<iphone> Phone"), states)
+        self.assertEqual(states[-1], ("idle", ""))
+        self.assertEqual((spec.source, spec.rtp_port, spec.audio_port), ("airplay", 1032, 1034))
+
+    def test_busy_drops_the_iphone(self):
+        async def go():
+            async def notify(msg):
+                pass
+            rec = Receiver("CAST-ABCDE", "OUT-1", (1920, 1080), 0, 1028, "reject", notify, FakePipeline)
+            rec.current = object()                 # a Miracast cast is on
+            return await rec.on_airplay("<iphone>")
+        self.assertIsNone(asyncio.run(go()))
+
+
 class TestNames(unittest.TestCase):
     MID = "0" * 32       # made-up machine ID
 

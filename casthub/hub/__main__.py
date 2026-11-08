@@ -21,6 +21,7 @@ from pathlib import Path
 
 from casthub import config as cfgmod
 from casthub import naming
+from casthub.airplay.uxplay import UxPlay
 from casthub.discovery.mdns import Mdns
 from casthub.hub.receiver import Receiver
 
@@ -139,6 +140,7 @@ class Hub:
         self.p2p_task: asyncio.Task | None = None
         self.p2p_writer: asyncio.StreamWriter | None = None
         self.p2p_fallback: asyncio.TimerHandle | None = None
+        self.airplay: UxPlay | None = None
 
     def wifi_direct_names(self, r: Receiver) -> bool:
         """Does this receiver's name also go out over Wi-Fi Direct (the first one does)?"""
@@ -147,10 +149,12 @@ class Hub:
     async def start(self) -> None:
         # mirror_all: one receiver; the first screen is the main one, the rest mirror it.
         mirrors = tuple(o for o, _ in self.outputs[1:])
+        # RTP ports: Miracast on rtp_base_port (+1 RTCP), AirPlay video / audio from UxPlay after it.
+        airplay_ports = (self.cfg.rtp_base_port + 4, self.cfg.rtp_base_port + 6)
         for i, (output, size) in enumerate(self.outputs[:1]):
             r = Receiver(self.name_for(i, output), output, size, self.cfg.miracast_base_port + i,
                          self.cfg.rtp_base_port + 2 * i, self.cfg.busy_policy, self.ui.send, on_ended=self.rename,
-                         size_now=output_size, mirrors=mirrors)
+                         size_now=output_size, mirrors=mirrors, airplay_ports=airplay_ports)
             await r.start()
             self.receivers.append(r)
             try:
@@ -160,6 +164,13 @@ class Hub:
             if not self.wifi_direct_names(r):
                 await r.show_name()          # findable now; the first waits for Wi-Fi Direct
         self.ui_task = asyncio.create_task(self.ui.keep_in_sync())
+        if self.cfg.airplay and self.receivers:
+            if UxPlay.available():
+                self.airplay = UxPlay(self.receivers[0], *airplay_ports,
+                                      replace=self.cfg.busy_policy == "replace", size_now=output_size)
+                await self.airplay.start()
+            else:
+                log.warning("airplay: uxplay is not installed; AirPlay is off")
         if self.cfg.wifi_direct and self.receivers:
             # Keep a reference: asyncio holds tasks weakly, and an unreferenced one was collected.
             self.p2p_task = asyncio.create_task(self.p2p_link())
@@ -202,10 +213,12 @@ class Hub:
         i = self.receivers.index(r)
         new = self.name_for(i, r.output)
         if new == r.name:                    # pinned in casthub.toml
+            await self.restart_airplay(r)
             await r.show_name()
             return
         log.info("%s is now %s", r.name, new)
         r.name = new
+        await self.restart_airplay(r)
         try:
             await self.mdns.publish(new, r.mice_port)
         except Exception as e:  # noqa: BLE001 (Avahi down: Wi-Fi discovery still works)
@@ -213,6 +226,12 @@ class Hub:
         if self.wifi_direct_names(r) and await self.p2p_advertise(new_address=self.wants_new_address(r)):
             return                           # shown when casthub-p2p says "advertised"
         await r.show_name()
+
+    async def restart_airplay(self, r: Receiver) -> None:
+        """UxPlay again under the receiver's (new) name and a new device ID. Not if an iPhone
+        connected in the meantime."""
+        if self.airplay and r is self.receivers[0] and not (r.current and r.current.via == "airplay"):
+            await self.airplay.restart()
 
     def wants_new_address(self, first: Receiver) -> bool:
         """A new Wi-Fi Direct address with each new name (D26). It drops Wi-Fi for a few
@@ -252,6 +271,8 @@ class Hub:
 
     async def stop(self) -> None:
         await self.end_all()          # tell each PC the cast is over (RTSP teardown)
+        if self.airplay:
+            await self.airplay.stop()
         for r in self.receivers:
             await r.stop()
         await self.mdns.close()

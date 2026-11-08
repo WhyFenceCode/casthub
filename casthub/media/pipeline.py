@@ -3,6 +3,12 @@
     udpsrc ! rtpjitterbuffer ! rtpmp2tdepay ! tsdemux ─┬ h264parse ! vah264dec ! glimagesink
                                                       └ aacparse ! avdec_aac ! pipewiresink
 
+AirPlay (source "airplay"): UxPlay speaks AirPlay and hands us the iPhone's H.264 as RTP and
+its decoded audio as L16 RTP on localhost (casthub/airplay/uxplay.py):
+
+    udpsrc ! rtpjitterbuffer ! rtph264depay ! h264parse ! vah264dec ! glimagesink
+    udpsrc ! rtpjitterbuffer ! rtpL16depay ! pipewiresink
+
 Mirrored screens (layout mirror_all): the video is decoded once, then a tee feeds one
 glimagesink per screen; place_on_outputs() puts one window on each.
 
@@ -50,6 +56,8 @@ class MediaSpec:
     audio_sink: str = "pipewiresink"
     latency_ms: int = 120
     capture: str = ""               # also write the PC's MPEG-TS to this file (debugging; keep it in local/)
+    source: str = "miracast"        # miracast (MPEG-TS over RTP) | airplay (H.264 + L16 RTP from UxPlay)
+    audio_port: int = 0             # airplay: the L16 RTP port (0 = no audio)
 
 
 STATS_S = 5
@@ -88,6 +96,8 @@ def describe(spec: MediaSpec) -> str:
             f" vt. ! {branch} ! {video_sink(out, f'vsink{i + 1}')}" for i, out in enumerate(spec.mirrors))
     else:
         video = f" ! {video_sink(spec.output, 'vsink')}"
+    if spec.source == "airplay":
+        return _describe_airplay(spec, video)
     parts = [
         f'udpsrc name=src port={spec.rtp_port} buffer-size=2097152 caps="{caps}"',
         f"rtpjitterbuffer name=jb latency={spec.latency_ms}",
@@ -108,6 +118,26 @@ def describe(spec: MediaSpec) -> str:
                  f" ! audioconvert ! audioresample ! {spec.audio_sink} name=asink sync=false async=false")
     if spec.capture:   # the stream exactly as the PC sent it, to replay with filesrc ! tsdemux
         desc += f' cap. ! queue leaky=downstream ! filesink location="{spec.capture}" sync=false async=false'
+    return desc
+
+
+AIRPLAY_VIDEO_CAPS = "application/x-rtp,media=video,clock-rate=90000,encoding-name=H264"
+# UxPlay decodes the iPhone's AAC-ELD to 44.1 kHz stereo before rtpL16pay.
+AIRPLAY_AUDIO_CAPS = "application/x-rtp,media=audio,clock-rate=44100,encoding-name=L16,encoding-params=2,channels=2"
+
+
+def _describe_airplay(spec: MediaSpec, video: str) -> str:
+    """UxPlay's RTP on localhost. The element names match the Miracast pipeline, so the stage
+    counters and first-frame probe work the same."""
+    desc = (f'udpsrc name=src address=127.0.0.1 port={spec.rtp_port} buffer-size=2097152 caps="{AIRPLAY_VIDEO_CAPS}"'
+            f" ! rtpjitterbuffer name=jb latency={spec.latency_ms} ! rtph264depay name=depay"
+            " ! queue name=vq max-size-time=0 max-size-bytes=0 max-size-buffers=64 ! h264parse name=vparse"
+            f" ! {spec.decoder}{video}")
+    if spec.audio and spec.audio_port:
+        desc += (f' udpsrc address=127.0.0.1 port={spec.audio_port} caps="{AIRPLAY_AUDIO_CAPS}"'
+                 f" ! rtpjitterbuffer latency={spec.latency_ms} ! rtpL16depay"
+                 " ! queue name=aq leaky=downstream max-size-time=500000000 ! audioconvert ! audioresample"
+                 f" ! {spec.audio_sink} name=asink sync=false async=false")
     return desc
 
 
@@ -276,9 +306,10 @@ async def place_on_output(output: str, pid: int | None = None) -> None:
     await place_on_outputs([output], pid)
 
 
-def default_spec(rtp_port: int, title: str, output: str = "", mirrors: tuple[str, ...] = ()) -> MediaSpec:
+def default_spec(rtp_port: int, title: str, output: str = "", mirrors: tuple[str, ...] = (),
+                 source: str = "miracast", audio_port: int = 0) -> MediaSpec:
     """Environment overrides for testing: CASTHUB_DECODER, CASTHUB_VIDEO_SINK, CASTHUB_CAPTURE (a file)."""
-    return MediaSpec(rtp_port, title, output, tuple(mirrors),
+    return MediaSpec(rtp_port, title, output, tuple(mirrors), source=source, audio_port=audio_port,
                      decoder=os.environ.get("CASTHUB_DECODER", "vah264dec"),
                      video_sink=os.environ.get("CASTHUB_VIDEO_SINK", "glimagesink"),
                      capture=os.environ.get("CASTHUB_CAPTURE", ""))

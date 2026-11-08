@@ -22,6 +22,7 @@ if pkill -TERM -u "$(id -u)" -f "$hub"; then
   if pkill -KILL -u "$(id -u)" -f "$hub"; then
     logger -t casthub-display "the hub did not stop; killed it"
     pkill -KILL -u "$(id -u)" -f 'casthub\.media\.player' || true
+    pkill -TERM -u "$(id -u)" -f 'uxplay .*-vrtp config-interval=1 ! udpsink host=127\.0\.0\.1' || true
   fi
 fi
 SWAYSOCK=$sock swaymsg exit >/dev/null 2>&1

@@ -222,3 +222,16 @@ announced over Wi-Fi Direct) and CAST-6EX4B (7251), both published over mDNS
   by Sway con_id. The idle, connecting and PIN pages go to every screen.
 - Check: headless Sway with two outputs, a local test stream through the player: one window per
   output, both fullscreen; the player stopped cleanly. M4 done (single only).
+
+## M5: AirPlay (in progress), 2026-11-08
+
+Owner had installed UxPlay 1.73.7 (Fedora package); nothing else done. Test device: iPhone/iPad.
+
+- `casthub/airplay/uxplay.py`: one UxPlay under the receiver's name. `-vrtp`/`-artp` send the
+  stream to our player on localhost (H.264 RTP, L16 RTP), so AirPlay uses the same player,
+  mirroring and kill-on-hang as Miracast. Cast start/end from UxPlay's log; busy → restart
+  UxPlay (drops the iPhone). After each cast: new name, new device ID. `setpriv --pdeathsig`
+  takes UxPlay down with the hub; `casthub-display --kill` stops it too.
+- Firewall: the active zone already allows 1025-65535, which covers UxPlay's ports.
+- Check: headless Sway, two outputs, a local H.264 + L16 RTP stream through the player: one
+  window per screen, fullscreen, clean stop. Live iPhone test pending.
