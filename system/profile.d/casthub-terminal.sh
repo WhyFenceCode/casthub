@@ -29,6 +29,12 @@ if [ -n "${BASH_VERSION:-}" ] && [ -n "${PS1:-}" ] && [ "${CASTHUB_TERMINAL:-}" 
   # Fedora's colour prompt already expands PROMPT_START; any other prompt gets it in front.
   case $PS1 in *PROMPT_START*) ;; *) PS1='${PROMPT_START@P}'"$PS1" ;; esac
 
+  # Hang-up ends the shell normally. Konsole 26 keeps a tab open with "'/bin/bash' crashed"
+  # when its shell dies from a signal; the desktop's console tabs close a tab with SIGHUP
+  # (Konsole's D-Bus API has no close call, and typing `exit` over D-Bus is locked down).
+  # Background jobs get the hang-up passed on, as bash does by default.
+  trap '__j=$(jobs -p); [ -n "$__j" ] && kill -HUP $__j 2>/dev/null; exit 0' HUP
+
   # Compiler diagnostics (gcc, g++) as chips.
   export GCC_COLORS='error=30;41:warning=30;43:note=30;44:range1=32:range2=34:locus=01:quote=01:fixit-insert=32:fixit-delete=31'
 fi
