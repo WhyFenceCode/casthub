@@ -9,6 +9,10 @@
   the PC and it does the pairing, the addresses and DHCP. (NM 1.58 has no PIN pairing.)
 - When the PC's address is known, tells the hub where its RTSP server is.
 
+- Gives the radio a new random Wi-Fi Direct address when the hub asks (each new receiver name),
+  so Windows treats us as a new display. wpa_supplicant only picks that address when it sets up
+  the Wi-Fi interface, so new_address() re-adds the interface: Wi-Fi drops for a few seconds.
+
 NetworkManager keeps managing the Wi-Fi interface; we set the advertised IEs in wpa_supplicant.
 """
 
@@ -46,6 +50,10 @@ PAIR_RETRY_AFTER_S = 3       # a repeated request from the PC this long after ou
 PAIR_RESTARTS = 4
 INVITE_FALLBACK_S = 10        # after refusing an invitation, wait this long for the PC to pair afresh
 ZONE = "casthub-p2p"            # firewalld zone (system/firewalld/casthub-p2p.xml): DHCP + RTP
+ROOT = "/fi/w1/wpa_supplicant1"
+# wpa_supplicant runs as NetworkManager_t (SELinux), which can read NM's own run directory.
+SUPPLICANT_CONF = Path("/run/NetworkManager/casthub-p2p-supplicant.conf")
+REJOIN_S = 30                   # wait this long for NetworkManager to reconnect Wi-Fi
 
 
 def wifi_interface(preferred: str) -> str:
@@ -76,6 +84,8 @@ class P2PDaemon:
         self.advertising = False
         self.advertised_dev = ""
         self.probes = 0
+        self.radio = asyncio.Lock()        # a new address and advertising never overlap
+        self.address_due = False           # the hub asked for a new Wi-Fi Direct address
 
     # ---- D-Bus helpers -------------------------------------------------------------
     async def call(self, path: str, iface: str, member: str, sig: str = "", body: list | None = None, dest: str = WPAS):
@@ -116,7 +126,20 @@ class P2PDaemon:
         # target while Display mode is on screen.
         await self.unadvertise()
 
-    async def advertise(self) -> None:
+    async def advertise(self, new_address: bool = False) -> None:
+        # A Wi-Fi Direct cast often ends at the hub (RTSP teardown) before its group does:
+        # then the new address waits for end_session, once the group is gone.
+        self.address_due |= new_address
+        async with self.radio:
+            if self.address_due and not self.connecting and not self.announced:
+                self.address_due = False
+                try:
+                    await self.new_address()
+                except Exception:
+                    log.exception("new Wi-Fi Direct address failed")
+            await self._advertise()
+
+    async def _advertise(self) -> None:
         await self.find_device()
         host = socket.gethostname().split(".")[0]
         # The MS-MICE attributes go *inside* wpa_supplicant's own WSC IE (VendorExtension), not
@@ -146,6 +169,66 @@ class P2PDaemon:
         log.info("advertising %r (MS-MICE host name from this machine)", self.name)
         await self.log_state()
 
+    async def wifi_state(self, wifi: str) -> str:
+        _, out = await self.nmcli("-t", "-f", "DEVICE,STATE", "device")
+        for line in out.splitlines():
+            dev, _, state = line.rpartition(":")
+            if dev == wifi:
+                return state
+        return ""
+
+    async def iw_p2p_address(self) -> str:
+        with contextlib.suppress(OSError):
+            proc = await asyncio.create_subprocess_exec("iw", "dev", stdout=asyncio.subprocess.PIPE,
+                                                        stderr=asyncio.subprocess.DEVNULL)
+            out, _ = await proc.communicate()
+            return p2p.p2p_device_address(out.decode(errors="replace"))
+        return ""
+
+    async def new_address(self) -> None:
+        """Re-add the Wi-Fi interface to wpa_supplicant with a config file holding a fresh random
+        P2P device address (wpa_supplicant 2.11 only sets it when it creates the P2P device,
+        and NetworkManager never passes a config file). NM sees the interface come back and
+        adopts it (CreateInterface → InterfaceExists → GetInterface), then reconnects Wi-Fi.
+        The station link drops meanwhile, so the hub asks only when no screen is casting."""
+        wifi = wifi_interface(self.cfg.miracast_interface)
+        (path,) = await self.call(ROOT, WPAS, "GetInterface", "s", [wifi])
+        driver = str(await self.get(path, IFACE, "Driver"))
+        was = await self.wifi_state(wifi)
+        address = p2p.random_address()
+        fd = os.open(SUPPLICANT_CONF, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(p2p.supplicant_conf(address))
+        log.info("new Wi-Fi Direct address: re-adding %s to wpa_supplicant (Wi-Fi drops briefly)", wifi)
+        await self.call(ROOT, WPAS, "RemoveInterface", "o", [path])
+        args = {"Ifname": Variant("s", wifi), "Driver": Variant("s", driver)}
+        try:
+            await self.call(ROOT, WPAS, "CreateInterface", "a{sv}",
+                            [args | {"ConfigFile": Variant("s", str(SUPPLICANT_CONF))}])
+        except RuntimeError as e:
+            if "InterfaceExists" in str(e):
+                log.warning("NetworkManager re-added Wi-Fi first; the address stays this time")
+            else:
+                log.warning("wpa_supplicant refused the new address (%s); re-adding Wi-Fi as before", e)
+                with contextlib.suppress(RuntimeError):
+                    await self.call(ROOT, WPAS, "CreateInterface", "a{sv}", [args])
+        now = await self.iw_p2p_address()
+        if now == p2p.mac(address):
+            log.info("new Wi-Fi Direct address in use")
+        else:
+            log.warning("the Wi-Fi Direct address did not change")
+        # NetworkManager reconnects Wi-Fi by itself; nudge it if it doesn't.
+        if was == "connected":
+            for _ in range(REJOIN_S * 2):
+                await asyncio.sleep(0.5)
+                if await self.wifi_state(wifi) == "connected":
+                    log.info("Wi-Fi reconnected")
+                    break
+            else:
+                log.warning("Wi-Fi did not reconnect within %d s; asking NetworkManager", REJOIN_S)
+                await self.nmcli("device", "connect", wifi, timeout=30)
+        await self.find_device()
+
     async def log_state(self) -> None:
         """What wpa_supplicant really advertises now (journal only; no addresses)."""
         try:
@@ -172,7 +255,7 @@ class P2PDaemon:
             old = self.advertised_dev
             with contextlib.suppress(RuntimeError):
                 await self.find_device()
-            if self.dev != old:
+            if self.dev != old and not self.radio.locked():
                 log.info("Wi-Fi interface was re-added; advertising again")
                 with contextlib.suppress(RuntimeError):
                     await self.advertise()
@@ -435,7 +518,7 @@ class P2PDaemon:
                     msg = json.loads(line)
                     if msg.get("cmd") == "advertise":
                         self.name, self.port = str(msg["name"]), int(msg.get("port", self.port))
-                        await self.advertise()
+                        await self.advertise(new_address=bool(msg.get("new_address")))
                 except (ValueError, KeyError, RuntimeError) as e:
                     log.warning("hub message: %s", e)
         finally:

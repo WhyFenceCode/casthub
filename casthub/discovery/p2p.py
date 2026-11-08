@@ -8,7 +8,9 @@ and we connect to its RTSP port over that link.
 
 This runs as root (`casthub-p2p.service`): wpa_supplicant's D-Bus API is root-only. It talks to
 the hub over /run/casthub/p2p.sock (JSON lines, group `casthub`):
-    hub → p2p   {"cmd": "advertise", "name": "<receiver name>", "port": 7250}
+    hub → p2p   {"cmd": "advertise", "name": "<receiver name>", "port": 7250, "new_address": true}
+                new_address: give the radio a new random Wi-Fi Direct address first (no screen
+                is casting); see p2pd.P2PDaemon.new_address
     p2p → hub   {"event": "source", "addr": "192.0.2.10", "rtsp_port": 7236, "name": "<peer>"}
     p2p → hub   {"event": "gone", "addr": "192.0.2.10"}
     p2p → hub   {"event": "pin", "pin": "12345670"}     show it until {"event": "pin", "pin": ""}
@@ -17,6 +19,7 @@ the hub over /run/casthub/p2p.sock (JSON lines, group `casthub`):
 
 from __future__ import annotations
 
+import os
 import struct
 
 # ---- information elements (pure, unit-tested) ----------------------------------------------
@@ -160,3 +163,36 @@ def peer_from_leases(text: str) -> tuple[str, str] | None:
         if len(f) >= 3:
             return f[2], f[3] if len(f) > 3 and f[3] != "*" else ""
     return None
+
+
+# ---- a new Wi-Fi Direct address per session ------------------------------------------------
+def random_address() -> bytes:
+    """A random locally administered unicast MAC (first byte: bit 1 set, bit 0 clear)."""
+    b = bytearray(os.urandom(6))
+    b[0] = (b[0] & 0xFC) | 0x02
+    return bytes(b)
+
+
+def supplicant_conf(address: bytes) -> str:
+    """wpa_supplicant config for the Wi-Fi interface: the P2P device is created with `address`
+    (mode 2 = this "persistent" address), and each group interface gets a random one too.
+    update_config=0: nothing is written back (no saved groups, which Windows' invitations need)."""
+    return ("# written by casthub-p2p; a new address after every cast\n"
+            "update_config=0\n"
+            "p2p_device_random_mac_addr=2\n"
+            f"p2p_device_persistent_mac_addr={mac(address)}\n"
+            "p2p_interface_random_mac_addr=1\n")
+
+
+def p2p_device_address(iw_dev: str) -> str:
+    """The P2P device's address in `iw dev` output (it has no network interface), or ""."""
+    addr = ""
+    for line in iw_dev.splitlines():
+        line = line.strip()
+        if line.startswith(("Interface ", "Unnamed")):
+            addr = ""
+        elif line.startswith("addr "):
+            addr = line[5:].strip().lower()
+        elif line == "type P2P-device":
+            return addr
+    return ""

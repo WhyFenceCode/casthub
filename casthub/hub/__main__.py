@@ -111,7 +111,7 @@ class Hub:
                 await asyncio.sleep(10)
                 continue
             self.p2p_writer = w
-            await self.p2p_advertise()
+            await self.p2p_advertise(new_address=self.wants_new_address(first))
             while line := await r.readline():
                 with contextlib.suppress(ValueError, KeyError):
                     ev = json.loads(line)
@@ -139,14 +139,22 @@ class Hub:
         except Exception as e:  # noqa: BLE001 (Avahi down: Wi-Fi discovery still works)
             log.warning("mdns: %s", e)
         if i == 0:
-            await self.p2p_advertise()
+            await self.p2p_advertise(new_address=self.wants_new_address(r))
 
-    async def p2p_advertise(self) -> None:
+    def wants_new_address(self, first: Receiver) -> bool:
+        """A new Wi-Fi Direct address with each new name (D26). It drops Wi-Fi for a few
+        seconds, so not while another screen is casting, nor for a pinned name."""
+        if self.cfg.pinned_name(first.output):
+            return False
+        return all(o.state == "idle" for o in self.receivers if o is not first)
+
+    async def p2p_advertise(self, new_address: bool = False) -> None:
         w = self.p2p_writer
         if w is None or w.is_closing() or not self.receivers:
             return
         first = self.receivers[0]
-        w.write(json.dumps({"cmd": "advertise", "name": first.name, "port": first.mice_port}).encode() + b"\n")
+        msg = {"cmd": "advertise", "name": first.name, "port": first.mice_port, "new_address": new_address}
+        w.write(json.dumps(msg).encode() + b"\n")
         with contextlib.suppress(ConnectionError):
             await w.drain()
 

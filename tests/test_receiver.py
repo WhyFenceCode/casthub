@@ -434,6 +434,37 @@ class TestDiscovery(unittest.TestCase):
         self.assertEqual((kv["connection.zone"], kv["save"]), ("casthub-p2p", "no"))
         self.assertEqual(p2p.mac(bytes.fromhex("00005e005301")), "00:00:5e:00:53:01")
 
+    def test_new_p2p_address(self):
+        for _ in range(200):
+            addr = p2p.random_address()
+            self.assertEqual(len(addr), 6)
+            self.assertEqual(addr[0] & 0x03, 0x02)          # locally administered, unicast
+        conf = p2p.supplicant_conf(bytes.fromhex("00005e005301"))
+        self.assertIn("p2p_device_random_mac_addr=2\n", conf)
+        self.assertIn("p2p_device_persistent_mac_addr=00:00:5e:00:53:01\n", conf)
+        self.assertIn("update_config=0\n", conf)
+
+    def test_p2p_device_address_from_iw(self):
+        iw = ("phy#0\n\tUnnamed/non-netdev interface\n\t\twdev 0xb\n\t\taddr 00:00:5E:00:53:02\n"
+              "\t\ttype P2P-device\n\tInterface wlan0\n\t\taddr 00:00:5e:00:53:01\n\t\ttype managed\n")
+        self.assertEqual(p2p.p2p_device_address(iw), "00:00:5e:00:53:02")
+        self.assertEqual(p2p.p2p_device_address("phy#0\n\tInterface wlan0\n\t\ttype managed\n"), "")
+
+    def test_hub_asks_for_a_new_address_only_when_idle(self):
+        from types import SimpleNamespace
+
+        from casthub.hub.__main__ import Hub
+        first, other = SimpleNamespace(output="OUT-1", state="idle"), SimpleNamespace(output="OUT-2", state="idle")
+        cfg = SimpleNamespace(pinned_name=lambda out: "")
+        hub = SimpleNamespace(cfg=cfg, receivers=[first, other])
+        self.assertTrue(Hub.wants_new_address(hub, first))
+        other.state = "streaming"
+        self.assertFalse(Hub.wants_new_address(hub, first))
+        other.state, first.state = "idle", "ending"             # the one that just ended may not be idle yet
+        self.assertTrue(Hub.wants_new_address(hub, first))
+        cfg.pinned_name = lambda out: "Pinned"
+        self.assertFalse(Hub.wants_new_address(hub, first))
+
     def test_peer_address(self):
         show = ("IP4.ADDRESS[1]:192.0.2.20/24\nIP4.GATEWAY:192.0.2.1\n"
                 "DHCP4.OPTION[3]:dhcp_server_identifier = 192.0.2.10\nDHCP4.OPTION[4]:ip_address = 192.0.2.20\n")

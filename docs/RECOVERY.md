@@ -58,6 +58,11 @@ Wi-Fi misbehaving after installing the receiver? Stop the Wi-Fi Direct service; 
 keeps managing Wi-Fi either way. A Wi-Fi Direct cast is an in-memory NM profile,
 `casthub-wifi-direct`; `nmcli connection delete casthub-wifi-direct` ends one by hand.
 
+After each cast casthub-p2p re-adds the Wi-Fi interface to wpa_supplicant with a new Wi-Fi Direct
+address (a few seconds without Wi-Fi). If Wi-Fi stays down after that: `nmcli device connect
+<wifi-device>`, or restart wpa_supplicant and NetworkManager (last line below), which also goes
+back to the radio's own address.
+
 ```sh
 sudo systemctl disable --now casthub-p2p.service
 sudo rm /etc/systemd/system/casthub-p2p.service /etc/firewalld/zones/casthub-p2p.xml
