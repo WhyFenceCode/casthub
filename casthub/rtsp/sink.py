@@ -196,9 +196,12 @@ class RtspSink:
             self._send(m.response(req, 405, "Method Not Allowed", public=SINK_PUBLIC))
 
     def _m3_reply(self, body: str) -> str:
+        """Answer only what we support, in the order asked. Windows stalled after M3 when we
+        answered its wfd2_* / microsoft_* parameters with `none`; sinks that work with it
+        (e.g. lazycast) leave unsupported ones out."""
         ours = wfd.sink_parameters(self.caps.width, self.caps.height, self.caps.rtp_port, self.caps.name)
         asked = m.parse_parameters(body)
-        return "".join(f"{k}: {ours.get(k, 'none')}\r\n" for k in asked)
+        return "".join(f"{k}: {ours[k]}\r\n" for k in asked if k in ours)
 
     def _on_set_parameter(self, req: m.RtspMessage) -> None:
         params = m.parse_parameters(req.body)

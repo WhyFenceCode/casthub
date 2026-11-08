@@ -128,20 +128,21 @@ def presentation_url(value: str) -> str:
 
 
 def sink_parameters(width: int, height: int, rtp_port: int, name: str) -> dict[str, str]:
-    """Answers for M3. Anything the source asks for that isn't here is answered `none`."""
+    """Answers for M3. Anything the source asks for that isn't here is left out of the reply."""
     return {
         "wfd_video_formats": sink_video_formats(width, height),
         "wfd_audio_codecs": sink_audio_codecs(),
         "wfd_client_rtp_ports": client_rtp_ports(rtp_port),
         "wfd_content_protection": "none",
-        "wfd_display_edid": "none",
         "wfd_coupled_sink": "none",
         "wfd_uibc_capability": "none",
         "wfd_standby_resume_capability": "none",
-        "wfd_connector_type": "none",
+        "wfd_connector_type": "05",                 # HDMI, as known-good sinks report
         "wfd_3d_video_formats": "none",
         "wfd_idr_request_capability": "1",          # we send wfd_idr_request when the decoder needs a key frame
         "intel_friendly_name": name,
         "intel_sink_manufacturer_name": "Cast Hub",
         "intel_sink_model_name": "Cast Hub",
+        "intel_sink_version": "1.0.0",
+        "intel_sink_device_URL": "none",
     }

@@ -129,7 +129,7 @@ class FakeSource:
         uri = "rtsp://localhost/wfd1.0"
         self.m1 = await req("OPTIONS", "*")
         # The sink's M2 arrives while we wait for M3's answer; expect_response() serves it.
-        r3 = await req("GET_PARAMETER", uri, "wfd_video_formats\r\nwfd_audio_codecs\r\nwfd_client_rtp_ports\r\nmicrosoft_cursor\r\n")
+        r3 = await req("GET_PARAMETER", uri, "wfd_video_formats\r\nwfd_audio_codecs\r\nwfd_client_rtp_ports\r\nwfd_connector_type\r\nmicrosoft_cursor\r\n")
         self.m3_reply = r3.body
         await req("SET_PARAMETER", uri,
                   "wfd_video_formats: 00 00 02 10 00000080 00000000 00000000 00 0000 0000 00 none none\r\n"
@@ -180,7 +180,8 @@ class TestRtspHandshake(unittest.TestCase):
         self.assertIn("client_port=1028", src.setup_transport)
         self.assertIn("org.wfa.wfd1.0", src.m1.headers["public"])
         replies = rm.parse_parameters(src.m3_reply)
-        self.assertEqual(replies["microsoft_cursor"], "none")
+        self.assertNotIn("microsoft_cursor", replies)          # unsupported: left out
+        self.assertEqual(replies["wfd_connector_type"], "05")
         self.assertEqual(replies["wfd_audio_codecs"], "AAC 00000001 00")
         self.assertEqual(src.keepalive_status, 200)
         self.assertEqual(why, "teardown")
