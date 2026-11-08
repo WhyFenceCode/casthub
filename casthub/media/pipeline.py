@@ -59,6 +59,8 @@ class MediaSpec:
     source: str = "miracast"        # miracast (MPEG-TS over RTP) | airplay (H.264 + L16 RTP from UxPlay)
     audio_port: int = 0             # airplay: the L16 RTP port (0 = no audio)
     video: bool = True              # airplay: False = audio only (its own player, see receiver.run_airplay)
+    tv: str = ""                    # passthrough (M10): "1920x1080@30" = hand frames and audio to the TV
+                                    # sender in this process (media/tv.py) instead of screens and speakers
 
 
 STATS_S = 5
@@ -74,6 +76,8 @@ def describe(spec: MediaSpec) -> str:
     caps = "application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T"
 
     def video_sink(output: str, name: str) -> str:
+        if spec.tv:
+            return tv_video_tail(spec.tv, name)
         sink = spec.video_sink
         if sink in ("glimagesink", "waylandsink"):
             # sync=false: show each frame when it is decoded (the PC's timestamps don't match our
@@ -89,7 +93,7 @@ def describe(spec: MediaSpec) -> str:
                 sink += f" fullscreen-output={output}"
         return f"{sink} name={name}"
 
-    if spec.mirrors:
+    if spec.mirrors and not spec.tv:
         # One decode, one window per screen. Each branch drops old frames rather than hold
         # the others up (a slow screen must not freeze the rest).
         branch = "queue leaky=downstream max-size-buffers=2 max-size-bytes=0 max-size-time=0"
@@ -116,7 +120,7 @@ def describe(spec: MediaSpec) -> str:
         # (the picture froze after 2 frames). So audio never waits on the PC's timestamps, and
         # its queue drops old audio rather than block the demuxer.
         desc += (f" demux. ! audio/mpeg ! queue name=aq leaky=downstream max-size-time=500000000 ! aacparse ! avdec_aac name=adec"
-                 f" ! audioconvert ! audioresample ! {AUDIO_OUT} ! {spec.audio_sink} name=asink sync=false async=false")
+                 f" ! audioconvert ! audioresample ! {audio_tail(spec)}")
     if spec.capture:   # the stream exactly as the PC sent it, to replay with filesrc ! tsdemux
         desc += f' cap. ! queue leaky=downstream ! filesink location="{spec.capture}" sync=false async=false'
     return desc
@@ -143,7 +147,7 @@ def _describe_airplay(spec: MediaSpec, video: str) -> str:
                  f' caps="{AIRPLAY_AUDIO_CAPS}"'
                  f" ! rtpjitterbuffer latency={spec.latency_ms} ! rtpL16depay"
                  " ! queue name=aq leaky=downstream max-size-time=500000000 ! audioconvert ! audioresample"
-                 f" ! {AUDIO_OUT} ! {spec.audio_sink} name=asink sync=false async=false")
+                 f" ! {audio_tail(spec)}")
     return desc
 
 
@@ -151,6 +155,31 @@ def _describe_airplay(spec: MediaSpec, video: str) -> str:
 # AAC) decodes to non-interleaved (planar) audio, audioconvert passed it through, and
 # pipewiresink played it as interleaved, so each channel ran at twice the speed, an octave up.
 AUDIO_OUT = "audio/x-raw,format=F32LE,layout=interleaved,rate=48000,channels=2"
+
+
+# Passthrough (M10): what a cast hands the TV sender (media/tv.py), in this same process.
+TV_CHANNEL = "casthub-tv"
+TV_AUDIO = "audio/x-raw,format=S16LE,layout=interleaved,rate=48000,channels=2"
+
+
+def parse_tv(value: str) -> tuple[int, int, int]:
+    """"1920x1080@30" → (1920, 1080, 30)."""
+    size, _, fps = value.partition("@")
+    w, _, h = size.partition("x")
+    return int(w), int(h), int(fps or 30)
+
+
+def tv_video_tail(tv: str, name: str = "vsink") -> str:
+    """Scale to the TV's mode (black borders keep the shape), fix the frame rate, hand over."""
+    w, h, fps = parse_tv(tv)
+    return (f"vapostproc add-borders=true ! video/x-raw,format=NV12,width={w},height={h},pixel-aspect-ratio=1/1"
+            f" ! videorate ! video/x-raw,framerate={fps}/1 ! intervideosink channel={TV_CHANNEL} name={name}")
+
+
+def audio_tail(spec: MediaSpec) -> str:
+    if spec.tv:
+        return f"{TV_AUDIO} ! interaudiosink channel={TV_CHANNEL} name=asink sync=false async=false"
+    return f"{AUDIO_OUT} ! {spec.audio_sink} name=asink sync=false async=false"
 
 
 def available(*names: str) -> list[str]:

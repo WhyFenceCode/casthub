@@ -361,3 +361,18 @@ heading for offices and lecture halls. Owner has a Miracast TV/projector; nothin
   48 kHz stereo, else LPCM.
 - Tested over loopback against our own sink (`tests/test_source.py`).
 - Next: stage 2, the video out (decode once, scale, VA-API encode, MPEG-TS over RTP).
+
+## M10 passthrough, stage 2: the video out, 2026-11-08
+
+- `media/tv.py`: one sender pipeline for as long as passthrough is on: intervideosrc /
+  interaudiosrc → VA-API H.264 (CHP = High without B-frames, or CBP) + AAC → MPEG-TS (WFD PIDs
+  0x1011 / 0x1100) → RTP to the TV. Fixed frame rate whatever comes in; black and silence between
+  casts so the TV keeps its session; a key frame every second and on the TV's request.
+- A cast's input is our usual Miracast or AirPlay receive path with `MediaSpec.tv` set: decoded
+  once, scaled to the TV's mode with black borders, handed over in the same process. No windows,
+  nothing on our speakers (TV only, D29).
+- Live loopback test (skipped without VA-API): a test pattern sent like a PC → our input → the
+  sender → a stand-in TV that demuxes it: ~30 fps 1280x720 H.264 + AAC during the cast, black
+  after it. (A first stand-in TV saw nothing: it had no queues after tsdemux; the stream was fine.)
+- Next: the TV process (sender + inputs, driven by the hub) and stage 3, finding and joining the
+  TV over Wi-Fi Direct, which needs the owner's TV.
