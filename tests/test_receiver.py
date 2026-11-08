@@ -4,6 +4,7 @@ All values are made up: names are placeholders, addresses are loopback.
 """
 
 import asyncio
+import json
 import struct
 import sys
 import unittest
@@ -67,6 +68,18 @@ class TestWfd(unittest.TestCase):
         vesa = int(wfd.sink_video_formats(1366, 768).split()[5], 16)
         self.assertFalse(vesa & (1 << 28))                 # 1920x1200 doesn't fit 1366x768
         self.assertTrue(vesa & (1 << 13))
+
+    def test_modes_take_the_window_shape(self):
+        def sizes(w, h):
+            return {wfd.TABLES[t][i][:2] for t, idx in wfd.offered_modes(w, h).items() for i in idx}
+        self.assertEqual(sizes(1024, 768), {(640, 480), (800, 600), (1024, 768)})  # 4:3 window: 4:3 only
+        self.assertNotIn((1024, 768), sizes(1920, 1080))
+        self.assertIn((1280, 800), sizes(1280, 800))                            # 16:10
+        self.assertEqual(sizes(700, 400), {(640, 360)})
+        self.assertEqual(sizes(500, 300), {(800, 480)})                         # none fits: the smallest
+        native, _, codec = wfd.sink_video_formats(700, 400).split(" ", 2)
+        self.assertEqual(int(native, 16), 7 << 3 | 2)                           # HH 640x360p60
+        self.assertTrue(int(codec.split()[2], 16) & 1)                          # 640x480p60, mandatory
 
     def test_parse_choice(self):
         f = wfd.parse_video_format("00 00 02 10 00000100 00000000 00000000 00 0000 0000 00 none none")
@@ -220,7 +233,7 @@ class FakePipeline:
         self.stopped = False
         FakePipeline.instances.append(self)
 
-    def start(self):
+    async def start(self):
         asyncio.get_running_loop().call_later(0.05, self.on_first_frame)
 
     def stop(self):
@@ -487,3 +500,107 @@ class TestDiscovery(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FakeChild:
+    """Swap the video process for a small script (no GStreamer)."""
+
+    def __init__(self, script: str):
+        self.script, self.old = script, None
+
+    def __enter__(self):
+        from casthub.media import player
+        self.old = player.BOOT
+        player.BOOT = self.script
+        return player
+
+    def __exit__(self, *exc):
+        from casthub.media import player
+        player.BOOT = self.old
+
+
+class TestPlayerProcess(unittest.TestCase):
+    def test_reports_and_stops(self):
+        script = ("import json,sys,time\n"
+                  "p=lambda **e: (print(json.dumps(e)), sys.stdout.flush())\n"
+                  "p(event='started'); p(event='first_frame'); p(event='packets', silent=0.2, seen=True)\n"
+                  "time.sleep(30)\n")
+
+        async def go():
+            first = asyncio.Event()
+            with FakeChild(script) as player:
+                pp = player.PlayerProcess(media.MediaSpec(5000, "t"), first.set, lambda e: None)
+                await pp.start()
+                await asyncio.wait_for(first.wait(), 5)
+                await asyncio.sleep(0.2)
+                seen, silent = pp.last_packet, pp.silent_for()
+                pp.stop()
+                rc = await asyncio.wait_for(pp.proc.wait(), 5)
+            return seen, silent, rc
+
+        seen, silent, rc = run(go())
+        self.assertEqual(seen, 1.0)
+        self.assertGreater(silent, 0.2)            # keeps counting while the child is quiet
+        self.assertNotEqual(rc, 0)                 # terminated
+
+    def test_a_child_ignoring_sigterm_is_killed(self):
+        script = ("import json,signal,sys,time\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+                  "print(json.dumps({'event': 'started'})); sys.stdout.flush(); time.sleep(30)\n")
+
+        async def go():
+            with FakeChild(script) as player:
+                pp = player.PlayerProcess(media.MediaSpec(5000, "t"), lambda: None, lambda e: None)
+                await pp.start()
+                pp.stop()
+                return await asyncio.wait_for(pp.proc.wait(), player.KILL_AFTER_S + 3)
+
+        self.assertEqual(run(go()), -9)
+
+    def test_start_failure_raises(self):
+        script = "import json\nprint(json.dumps({'event': 'failed', 'text': 'no decoder'}))\n"
+
+        async def go():
+            with FakeChild(script) as player:
+                pp = player.PlayerProcess(media.MediaSpec(5000, "t"), lambda: None, lambda e: None)
+                with self.assertRaises(RuntimeError) as cm:
+                    await pp.start()
+                return str(cm.exception)
+
+        self.assertEqual(run(go()), "no decoder")
+
+    def test_spec_round_trip(self):
+        from casthub.media import player
+        spec = media.MediaSpec(5000, "Cast Hub CAST-ABCDE", "OUT-1", capture="local/x.ts")
+        self.assertEqual(player.decode_spec(player.encode_spec(spec)), spec)
+
+
+class TestUiSync(unittest.TestCase):
+    def test_state_reaches_a_ui_that_starts_late(self):
+        import tempfile
+
+        from casthub.hub.__main__ import UiLink
+
+        async def go(tmp):
+            link = UiLink()
+            link.path = Path(tmp) / "ui.sock"
+            await link.send({"cmd": "state", "output": "OUT-1", "state": "idle", "name": "CAST-ABCDE"})
+            got = []
+
+            async def ui(r, w):
+                got.append(json.loads(await r.readline()))
+                w.write(b'{"ok": true}\n')
+                await w.drain()
+                w.close()
+            server = await asyncio.start_unix_server(ui, str(link.path))
+            sync = asyncio.create_task(link.keep_in_sync(every=0.05))
+            for _ in range(100):
+                if got:
+                    break
+                await asyncio.sleep(0.02)
+            sync.cancel()
+            server.close()
+            return got
+
+        with tempfile.TemporaryDirectory() as tmp:
+            got = run(go(tmp))
+        self.assertEqual(got[0]["name"], "CAST-ABCDE")

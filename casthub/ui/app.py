@@ -55,6 +55,7 @@ class DisplayUI(QObject):
         super().__init__()
         self.app, self.cfg = app, cfg
         self.views: dict[str, QQuickView] = {}
+        self.names: dict[str, str] = {}             # output → the hub's receiver name
         self.qr = ""
         for s in app.screens():
             self.add_screen(s)
@@ -86,7 +87,8 @@ class DisplayUI(QObject):
         if root is None:
             return
         props = {
-            "receiverName": self.cfg.receiver_name(index, screen.name()),
+            # The hub's name for this screen if it told us (it changes after every cast).
+            "receiverName": self.names.get(screen.name()) or self.cfg.receiver_name(index, screen.name()),
             "location": self.cfg.location,
             "coordinates": self.cfg.coordinates(),
             "airplay": self.cfg.airplay,
@@ -174,6 +176,8 @@ class DisplayUI(QObject):
             else:
                 self.open_leave()
         elif cmd in ("state", "busy", "pin"):
+            if cmd == "state" and msg.get("name"):     # kept even before the screen's view exists
+                self.names[msg["output"]] = str(msg["name"])
             v = self.views.get(msg["output"])
             if v is None:
                 raise KeyError(f"no screen {msg['output']!r}")

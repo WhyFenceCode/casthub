@@ -48,6 +48,7 @@ class MediaSpec:
 
 
 STATS_S = 5
+PLACE_TRIES = 15                # × 0.2 s
 # (counter, element, pad): network → jitter buffer → RTP unwrap → demuxed video/audio → parsed → shown
 STAGES = [("net", "src", "src"), ("jitter", "jb", "src"), ("rtp-out", "depay", "src"),
           ("video-demuxed", "vq", "sink"), ("audio-demuxed", "aq", "sink"), ("parsed", "vparse", "src"),
@@ -210,17 +211,22 @@ class Pipeline:
             self.pipe = None
 
 
-async def place_on_output(output: str) -> None:
-    """Under Sway, put this process's video window fullscreen on `output` (glimagesink has no
-    output choice of its own). The UI is a separate process, so the pid picks the video only.
-    TODO(M4): two receivers in one hub share the pid; give each video window its own title."""
+async def place_on_output(output: str, pid: int | None = None) -> None:
+    """Under Sway, put the video window of process `pid` (default: this one) fullscreen on
+    `output` (glimagesink has no output choice of its own). Each cast plays in its own process
+    (media/player.py), so the pid picks exactly that receiver's video."""
     if not output or not os.environ.get("SWAYSOCK"):
         return
-    cmd = f"[pid={os.getpid()}] move container to output {output}, fullscreen enable"
-    with contextlib.suppress(OSError):
-        proc = await asyncio.create_subprocess_exec("swaymsg", cmd, stdout=asyncio.subprocess.DEVNULL,
-                                                    stderr=asyncio.subprocess.DEVNULL)
-        await proc.wait()
+    cmd = f"[pid={pid or os.getpid()}] move container to output {output}, fullscreen enable"
+    # The first frame can arrive before the window is mapped ("No matching node"): retry briefly.
+    for _ in range(PLACE_TRIES):
+        with contextlib.suppress(OSError):
+            proc = await asyncio.create_subprocess_exec("swaymsg", cmd, stdout=asyncio.subprocess.DEVNULL,
+                                                        stderr=asyncio.subprocess.DEVNULL)
+            if await proc.wait() == 0:
+                return
+        await asyncio.sleep(0.2)
+    log.warning("could not put the video on %s", output)
 
 
 def default_spec(rtp_port: int, title: str, output: str = "") -> MediaSpec:

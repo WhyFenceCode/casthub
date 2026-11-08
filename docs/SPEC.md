@@ -225,7 +225,7 @@ screens.
 |------|--------|
 | OS | Fedora KDE Plasma (current stable), RPM Fusion codecs, intel-media-driver |
 | Language | Python 3.12+, asyncio throughout, type hints, ruff + pytest |
-| Media | GStreamer via PyGObject: `udpsrc ! rtpmp2tdepay ! tsdemux ! h264parse ! vah264dec ! waylandsink`, audio `aacparse ! avdec_aac ! pipewiresink` |
+| Media | GStreamer via PyGObject: `udpsrc ! rtpmp2tdepay ! tsdemux ! h264parse ! vah264dec ! glimagesink`, audio `aacparse ! avdec_aac ! pipewiresink`. Each cast plays in its own process (`casthub/media/player.py`), which the hub kills when the cast ends, so a stuck video sink can't freeze the hub. The sink offers only video modes in the shape of its screen or window, measured at each cast, so extend mode makes a display of that shape. |
 | Wi-Fi Direct | wpa_supplicant P2P over D-Bus (`dbus-fast`) for discovery; NetworkManager (`nmcli`) forms the group |
 | mDNS | Avahi over D-Bus |
 | Kiosk | Sway, controlled over its IPC socket (`i3ipc`) |

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 # Resolution tables, bit index → (width, height, fps, interlaced). WFD Technical Spec 1.x, tables 34–36.
@@ -49,30 +50,55 @@ class AudioFormat:
     channels: int
 
 
-def _mask(table: list, width: int, height: int, max_fps: int = 60) -> int:
-    m = 0
-    for i, (w, h, fps, interlaced) in enumerate(table):
-        if not interlaced and w <= width and h <= height and fps <= max_fps:
-            m |= 1 << i
-    return m
+ASPECT_TOLERANCE = 0.03         # 1366x768 and 854x480 count as 16:9
 
 
-def _native(width: int, height: int) -> int:
-    """Native resolution field: index << 3 | table (0 CEA, 1 VESA, 2 HH). Exact match at 60 fps, else 640x480."""
-    for t, table in enumerate((CEA, VESA, HH)):
-        for i, (w, h, fps, interlaced) in enumerate(table):
-            if (w, h, fps, interlaced) == (width, height, 60, False):
-                return i << 3 | t
-    return 0
+def offered_modes(width: int, height: int) -> dict[str, list[int]]:
+    """Table → bit indices we offer for a screen (or window) of width × height.
+
+    Only modes in the window's shape, so in extend mode Windows makes a display of that shape
+    instead of letterboxing a 16:9 desktop into a 4:3 window: the aspect closest to the window's
+    among all table modes, then those that fit (or, if none fits, the smallest one). Progressive
+    only, ≤ 60 fps. (sink_video_formats adds CEA 640x480p60: every WFD sink must support it.)"""
+    modes = [(t, i, w, h) for t, table in TABLES.items()
+             for i, (w, h, fps, interlaced) in enumerate(table) if not interlaced and fps <= 60]
+    want = width / max(height, 1)
+    best = min({w / h for _, _, w, h in modes}, key=lambda a: abs(math.log(a / want)))
+    same = [m for m in modes if abs(m[2] / m[3] - best) / best <= ASPECT_TOLERANCE]
+    fit = [m for m in same if m[2] <= width and m[3] <= height]
+    if not fit:
+        smallest = min(m[2] * m[3] for m in same)
+        fit = [m for m in same if m[2] * m[3] == smallest]
+    out: dict[str, list[int]] = {t: [] for t in TABLES}
+    for t, i, _, _ in fit:
+        out[t].append(i)
+    return out
+
+
+def _with_mandatory(offered: dict[str, list[int]]) -> dict[str, list[int]]:
+    return offered | {"CEA": sorted(set(offered["CEA"]) | {0})}
+
+
+def _native(offered: dict[str, list[int]]) -> int:
+    """Native resolution field: index << 3 | table (0 CEA, 1 VESA, 2 HH): the biggest mode in
+    the window's shape, at its highest frame rate."""
+    best, field = (0, 0), 0
+    for t, name in enumerate(("CEA", "VESA", "HH")):
+        for i in offered[name]:
+            w, h, fps, _ = TABLES[name][i]
+            if (w * h, fps) > best:
+                best, field = (w * h, fps), i << 3 | t
+    return field
 
 
 def sink_video_formats(width: int, height: int) -> str:
-    """Our `wfd_video_formats` for a screen of width × height: every progressive mode that fits, CBP and CHP."""
-    cea, vesa, hh = _mask(CEA, width, height), _mask(VESA, width, height), _mask(HH, width, height)
+    """Our `wfd_video_formats` for a screen of width × height (see offered_modes), CHP."""
+    offered = offered_modes(width, height)
+    cea, vesa, hh = (sum(1 << i for i in _with_mandatory(offered)[t]) for t in ("CEA", "VESA", "HH"))
     # One H.264 entry, constrained high (a CHP decoder also plays CBP), as known-good
     # Windows sinks send it; a second codec entry is unusual.
     codec = f"02 {LEVEL_42:02x} {cea:08x} {vesa:08x} {hh:08x} 00 0000 0000 00 none none"
-    return f"{_native(width, height):02x} 00 {codec}"
+    return f"{_native(offered):02x} 00 {codec}"
 
 
 def parse_video_format(value: str) -> VideoFormat:

@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from casthub.media import pipeline as media
+from casthub.media import player
 from casthub.mice import protocol as mp
 from casthub.mice.listener import MiceConnection, MiceListener
 from casthub.rtsp.sink import RtspError, RtspSink, SinkCaps
@@ -35,9 +36,11 @@ class Source:
 class Receiver:
     def __init__(self, name: str, output: str, size: tuple[int, int], mice_port: int, rtp_port: int,
                  busy_policy: str, notify: Callable[[dict], Awaitable[None]],
-                 pipeline_factory: Callable[..., media.Pipeline] = media.Pipeline,
-                 on_ended: Callable[[Receiver], Awaitable[None]] | None = None) -> None:
+                 pipeline_factory: Callable[..., player.PlayerProcess] = player.PlayerProcess,
+                 on_ended: Callable[[Receiver], Awaitable[None]] | None = None,
+                 size_now: Callable[[str], Awaitable[tuple[int, int] | None]] | None = None) -> None:
         self.name, self.output, self.size = name, output, size
+        self.size_now = size_now          # the output's size right now (a window can be resized)
         self.on_ended = on_ended          # after each cast: the hub gives the receiver a new name
         self.mice_port, self.rtp_port, self.busy_policy = mice_port, rtp_port, busy_policy
         self.notify, self.pipeline_factory = notify, pipeline_factory
@@ -118,21 +121,24 @@ class Receiver:
     async def run(self, src: Source) -> None:
         loop = asyncio.get_running_loop()
         first_frame, failed = asyncio.Event(), loop.create_future()
-        pipe = None
-        sink = RtspSink(src.addr, src.rtsp_port, SinkCaps(self.size[0], self.size[1], self.rtp_port, self.name))
+        pipe, sink = None, None
         try:
+            if self.size_now:             # offer modes in the window's shape at this moment (extend mode)
+                with contextlib.suppress(Exception):
+                    self.size = await self.size_now(self.output) or self.size
+            sink = RtspSink(src.addr, src.rtsp_port, SinkCaps(self.size[0], self.size[1], self.rtp_port, self.name))
             await self.set_state("connecting", src.name)
             spec = media.default_spec(self.rtp_port, f"Cast Hub {self.name}", self.output)
             on_error = lambda e: failed.done() or failed.set_result(e)  # noqa: E731
             pipe = self.pipeline_factory(spec, first_frame.set, on_error)
             try:
-                pipe.start()
+                await pipe.start()
             except RuntimeError as e:
                 # Seen once with a real PC, not reproducible since: retry, then fall back to software decoding.
                 log.warning("%s: %s; retrying with %s", self.name, e, "avdec_h264")
                 await asyncio.sleep(0.5)
                 pipe = self.pipeline_factory(dataclasses.replace(spec, decoder="avdec_h264"), first_frame.set, on_error)
-                pipe.start()
+                await pipe.start()
             neg = await sink.connect()
             log.info("%s: negotiated %s via %s", self.name, neg.video, src.via)
 
@@ -142,7 +148,7 @@ class Receiver:
                 except TimeoutError:
                     await sink.request_idr()
                     await first_frame.wait()
-                await media.place_on_output(self.output)
+                await media.place_on_output(self.output, getattr(pipe, "pid", None))
                 await self.set_state("streaming", src.name)
 
             async def link_watch() -> str:
@@ -173,8 +179,9 @@ class Receiver:
         finally:
             if pipe:            # first, so the video window is gone at once (Ctrl+Alt+Esc)
                 pipe.stop()
-            with contextlib.suppress(Exception):
-                await sink.teardown()
+            if sink:
+                with contextlib.suppress(Exception):
+                    await sink.teardown()
             if self.current is src:
                 self.current = None
             if self.on_ended:

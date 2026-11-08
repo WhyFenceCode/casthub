@@ -53,21 +53,66 @@ async def sway_outputs() -> list[tuple[str, tuple[int, int]]] | None:
     return outs
 
 
+async def output_size(output: str) -> tuple[int, int] | None:
+    """The output's current size under Sway (the Display panel's window can be resized)."""
+    with contextlib.suppress(Exception):
+        for name, size in await sway_outputs() or []:
+            if name == output:
+                return size
+    return None
+
+
 class UiLink:
-    """Fire-and-forget JSON lines to the Display UI's control socket; silent when it isn't running."""
+    """JSON lines to the Display UI's control socket; silent when it isn't running.
+
+    The UI may start after the hub, or restart, and would then show its own idea of the name:
+    the last state of each screen is kept and sent again until the UI has it (keep_in_sync)."""
 
     def __init__(self) -> None:
         self.path = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "casthub-ui.sock"
+        self.states: dict[str, dict] = {}      # output → last "state" message
+        self.synced = True
+        self.ui_inode = 0                     # the UI socket we last delivered to (0: none)
 
-    async def send(self, msg: dict) -> None:
+    def socket_inode(self) -> int:
+        try:
+            return self.path.stat().st_ino
+        except OSError:
+            return 0
+
+    async def keep_in_sync(self, every: float = 1.0) -> None:
+        while True:
+            await asyncio.sleep(every)
+            inode = self.socket_inode()
+            if inode and self.states and (not self.synced or inode != self.ui_inode):
+                results = [await self.deliver(m) for m in list(self.states.values())]
+                self.synced = all(results)
+
+    async def deliver(self, msg: dict) -> bool:
         try:
             r, w = await asyncio.wait_for(asyncio.open_unix_connection(str(self.path)), 1)
             w.write(json.dumps(msg).encode() + b"\n")
             await w.drain()
+            reply = b""
             with contextlib.suppress(Exception):
-                await asyncio.wait_for(r.readline(), 1)
+                reply = await asyncio.wait_for(r.readline(), 1)
             w.close()
         except (OSError, TimeoutError):
+            return False
+        self.ui_inode = self.socket_inode()
+        try:                                  # e.g. {"ok": false} while the UI has no view for that screen yet
+            return bool(json.loads(reply).get("ok", True)) if reply else True
+        except ValueError:
+            return True
+
+    async def send(self, msg: dict) -> None:
+        if msg.get("cmd") == "state" and msg.get("output") is not None:
+            self.states[str(msg["output"])] = msg
+        if await self.deliver(msg):
+            return
+        if msg.get("cmd") == "state":
+            self.synced = False
+        else:
             # No Display UI (testing from the desktop): a PIN must still be seen.
             if msg.get("cmd") == "pin" and msg.get("pin"):
                 pin = str(msg["pin"])
@@ -90,13 +135,15 @@ class Hub:
         outs = self.outputs if self.cfg.layout == "per_screen" else self.outputs[:1]
         for i, (output, size) in enumerate(outs):
             r = Receiver(self.name_for(i, output), output, size, self.cfg.miracast_base_port + i,
-                         self.cfg.rtp_base_port + 2 * i, self.cfg.busy_policy, self.ui.send, on_ended=self.rename)
+                         self.cfg.rtp_base_port + 2 * i, self.cfg.busy_policy, self.ui.send, on_ended=self.rename,
+                         size_now=output_size)
             await r.start()
             self.receivers.append(r)
             try:
                 await self.mdns.publish(r.name, r.mice_port)
             except Exception as e:  # Avahi down: casting by Wi-Fi discovery + host name still works
                 log.warning("mdns: %s", e)
+        self.ui_task = asyncio.create_task(self.ui.keep_in_sync())
         if self.cfg.wifi_direct and self.receivers:
             # Keep a reference: asyncio holds tasks weakly, and an unreferenced one was collected.
             self.p2p_task = asyncio.create_task(self.p2p_link())
