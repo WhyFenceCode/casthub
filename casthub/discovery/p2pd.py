@@ -86,6 +86,7 @@ class P2PDaemon:
         self.probes = 0
         self.radio = asyncio.Lock()        # a new address and advertising never overlap
         self.address_due = False           # the hub asked for a new Wi-Fi Direct address
+        self.mice_addresses: list[str] = []      # our Wi-Fi IPv4 address(es) in the MS-MICE attributes
 
     # ---- D-Bus helpers -------------------------------------------------------------
     async def call(self, path: str, iface: str, member: str, sig: str = "", body: list | None = None, dest: str = WPAS):
@@ -143,12 +144,15 @@ class P2PDaemon:
     async def _advertise(self) -> None:
         await self.find_device()
         host = socket.gethostname().split(".")[0]
+        # Our Wi-Fi address too ([MS-MICE] "IP Address Attribute", as Windows' own sinks do): Windows then skips
+        # resolving the host name, which it gives 1.5 s before falling back to Wi-Fi Direct.
+        self.mice_addresses = await self.wifi_addresses()
         # The MS-MICE attributes go *inside* wpa_supplicant's own WSC IE (VendorExtension), not
         # in a second IE: Windows did not see them there and fell back to Wi-Fi Direct.
         conf = {"DeviceName": Variant("s", self.name[:32]),
                 "PrimaryDeviceType": Variant("ay", p2p.PRIMARY_DEVICE_TYPE),
                 "GOIntent": Variant("u", 15),
-                "VendorExtension": Variant("aay", [p2p.mice_vendor_payload(host)])}
+                "VendorExtension": Variant("aay", [p2p.mice_vendor_payload(host, self.mice_addresses)])}
         await self.set(self.dev, P2PDEV, "P2PDeviceConfig", "a{sv}", conf)
         await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements())
         # Offer push-button only, so Windows pairs the way NetworkManager can (no PIN).
@@ -167,8 +171,15 @@ class P2PDaemon:
             await self.call(self.dev, IFACE, "SubscribeProbeReq")
         self.advertising = True
         self.advertised_dev = self.dev
-        log.info("advertising %r (MS-MICE host name from this machine)", self.name)
+        log.info("advertising %r (MS-MICE host name and %d address(es) from this machine)", self.name,
+                 len(self.mice_addresses))
         await self.log_state()
+
+    async def wifi_addresses(self) -> list[str]:
+        """The Wi-Fi interface's IPv4 addresses (the network PCs cast over), [] if none."""
+        wifi = wifi_interface(self.cfg.miracast_interface)
+        _, out = await self.nmcli("-t", "-f", "IP4.ADDRESS", "device", "show", wifi)
+        return p2p.ipv4_addresses(out)
 
     async def wifi_state(self, wifi: str) -> str:
         _, out = await self.nmcli("-t", "-f", "DEVICE,STATE", "device")
@@ -256,8 +267,9 @@ class P2PDaemon:
             old = self.advertised_dev
             with contextlib.suppress(RuntimeError):
                 await self.find_device()
-            if self.dev != old and not self.radio.locked():
-                log.info("Wi-Fi interface was re-added; advertising again")
+            moved = await self.wifi_addresses() != self.mice_addresses
+            if (self.dev != old or moved) and not self.radio.locked():
+                log.info("Wi-Fi %s; advertising again", "address changed" if moved else "interface was re-added")
                 with contextlib.suppress(RuntimeError):
                     await self.advertise()
 

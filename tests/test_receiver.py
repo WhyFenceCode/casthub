@@ -450,6 +450,14 @@ class TestDiscovery(unittest.TestCase):
         self.assertEqual((kv["connection.zone"], kv["save"]), ("casthub-p2p", "no"))
         self.assertEqual(p2p.mac(bytes.fromhex("00005e005301")), "00:00:5e:00:53:01")
 
+    def test_mice_ip_address_attribute(self):
+        show = "IP4.ADDRESS[1]:192.0.2.20/24\nIP4.ADDRESS[2]:192.0.2.21/24\n"
+        self.assertEqual(p2p.ipv4_addresses(show), ["192.0.2.20", "192.0.2.21"])
+        self.assertEqual(p2p.ipv4_addresses("IP4.GATEWAY:192.0.2.1\n"), [])
+        payload = p2p.mice_vendor_payload("receiver-host", ["192.0.2.20"])
+        # [MS-MICE] "IP Address Attribute": 0x2005, length, the address as ASCII text
+        self.assertTrue(payload.endswith(bytes.fromhex("2005000a") + b"192.0.2.20"))
+
     def test_new_p2p_address(self):
         for _ in range(200):
             addr = p2p.random_address()

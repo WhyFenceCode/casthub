@@ -189,3 +189,11 @@ infrastructure" bit in our Wi-Fi Direct probe responses that should make Windows
 the network instead of pairing. Windows has always paired over Wi-Fi Direct so far. To do: find
 out why, and get one cast to play `via mice`. M4's two receivers (7250, 7251) depend on it,
 since Wi-Fi Direct offers only one receiver per radio.
+
+- Diagnosis: Windows never opened TCP 7250. Per [MS-MICE] (source receive rules and product
+  notes), Windows resolves the probe response's host name with DNS and mDNS in parallel and
+  gives up after 1.5 s, falling back to Wi-Fi Direct; with an IP Address attribute (0x2005,
+  ASCII) it skips resolution. We sent no address. Firewall (7250 open) and network security
+  (WPA2, required) were fine.
+- Fix: casthub-p2p puts the Wi-Fi interface's IPv4 address(es) in the MS-MICE attributes and
+  advertises again when the address changes.

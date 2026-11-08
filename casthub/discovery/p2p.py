@@ -197,3 +197,13 @@ def p2p_device_address(iw_dev: str) -> str:
         elif line == "type P2P-device":
             return addr
     return ""
+
+
+def ipv4_addresses(show: str) -> list[str]:
+    """IPv4 addresses from `nmcli -t -f IP4.ADDRESS device show <dev>` ("IP4.ADDRESS[1]:a.b.c.d/24")."""
+    out = []
+    for line in show.splitlines():
+        key, _, val = line.partition(":")
+        if key.startswith("IP4.ADDRESS") and val:
+            out.append(val.split("/")[0])
+    return out
