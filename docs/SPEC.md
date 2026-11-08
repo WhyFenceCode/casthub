@@ -303,7 +303,7 @@ M1 (Fedora installed) and M2 (Miracast go/no-go connection tests) are done.
 | M4 | Multi-port test *(done, locked: single receiver only)* | Two receivers on one radio failed (Win + K lists one receiver per radio), so Cast Hub has one receiver and every screen mirrors it (`mirror_all`); Windows sound plays at the right speed |
 | M4B | Miracast over the network *(done)* | A Windows cast over the same network (MS-MICE, mDNS, port 7250) plays; M3's acceptance was over Wi-Fi Direct. M4 depends on it |
 | M5 | AirPlay *(done)* | One UxPlay, shown on every screen like Miracast; an iPhone mirrors to the hub |
-| M6 | Kiosk session | Display mode boots to idle screens; busy rule works; Ctrl + Alt + Esc opens the leave page during a stream |
+| M6 | Kiosk session *(done)* | Display mode boots to idle screens; busy rule works; Ctrl + Alt + Esc opens the leave page during a stream |
 | M9 | Desktop shell | The mockup desktop (top bar, Console / Files / Desktop, today panel, meters) installed for a fresh user with no manual setup; logout, lock and switch-user screens themed and working (D22) |
 | M10 | Passthrough | From the leave page, pick a Miracast target; an iPhone mirroring to Cast Hub over AirPlay shows on that target (D21) |
 | M11 | Brand setup and settings | Brand packs (D24) with the current brand as default; Cast Hub Settings on desktop and Console (D25) changes the brand and the boot target; booting into Display mode works, Ctrl + Alt + Esc reaches the login screen; receivers named `CAST-<DeviceID>` (D26) |
