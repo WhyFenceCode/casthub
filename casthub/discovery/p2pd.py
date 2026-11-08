@@ -280,7 +280,21 @@ class P2PDaemon:
         ifpath = props["interface_object"].value
         self.group_if = await self.get(ifpath, IFACE, "Ifname")
         log.info("group started, role %s", role)
+        # As client, the PC (GO) usually hands out addresses in the 4-way handshake (EAPOL IP
+        # allocation): no DHCP, and wpa_supplicant tells us the GO's address right here.
+        go_ip = p2p.ipv4(bytes(props["IpAddrGo"].value)) if "IpAddrGo" in props else None
+        if role != "GO" and go_ip:
+            self.announce(go_ip, "")
+            return
         asyncio.ensure_future(self._guard(self.find_peer(role)))
+
+    def announce(self, addr: str, name: str) -> None:
+        if addr in self.announced:
+            return
+        self.announced.add(addr)
+        port = next(iter(self.peers.values()), 7236)
+        log.info("PC reachable over Wi-Fi Direct (RTSP port %d); telling the hub", port)
+        self.broadcast({"event": "source", "addr": addr, "rtsp_port": port, "name": name})
 
     async def nm_p2p_device(self) -> str:
         rc, out = await self.nmcli("-t", "-f", "DEVICE,TYPE", "device")
@@ -292,7 +306,6 @@ class P2PDaemon:
 
     async def find_peer(self, role: str) -> None:
         """Wait for NM to finish addressing, then announce the PC to the hub."""
-        port = next(iter(self.peers.values()), 7236)
         nmdev = await self.nm_p2p_device()
         for _ in range(60):
             await asyncio.sleep(0.5)
@@ -304,10 +317,8 @@ class P2PDaemon:
                 _, out = await self.nmcli("-t", "-f", "IP4,DHCP4", "device", "show", nmdev)
                 addr = p2p.peer_from_nm(out)
                 found = (addr, "") if addr else None
-            if found and found[0] not in self.announced:
-                self.announced.add(found[0])
-                log.info("PC reachable over Wi-Fi Direct; telling the hub")
-                self.broadcast({"event": "source", "addr": found[0], "rtsp_port": port, "name": found[1]})
+            if found:
+                self.announce(*found)
                 return
         log.warning("Wi-Fi Direct is up but the PC's address never appeared")
 

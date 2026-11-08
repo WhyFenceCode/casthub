@@ -135,6 +135,11 @@ def nm_profile_args(peer_mac: str, wfd_ies: bytes, zone: str) -> list[str]:
             "ipv4.method", "auto", "ipv6.method", "disabled"]
 
 
+def ipv4(raw: bytes) -> str | None:
+    """A 4-byte address from wpa_supplicant (network order); None when missing or 0.0.0.0."""
+    return ".".join(map(str, raw)) if len(raw) == 4 and any(raw) else None
+
+
 def peer_from_nm(show: str) -> str | None:
     """The PC's address from `nmcli -t device show` of the P2P device when we are the client:
     the DHCP server (the PC is GO), else the gateway."""

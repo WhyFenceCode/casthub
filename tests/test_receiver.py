@@ -323,6 +323,9 @@ class TestDiscovery(unittest.TestCase):
         self.assertIsNone(p2p.peer_from_nm("IP4.GATEWAY:--\n"))
         self.assertEqual(p2p.peer_from_leases("1700000000 00:00:5e:00:53:01 192.0.2.30 pc *\n"), ("192.0.2.30", "pc"))
         self.assertIsNone(p2p.peer_from_leases(""))
+        self.assertEqual(p2p.ipv4(bytes([192, 0, 2, 1])), "192.0.2.1")
+        self.assertIsNone(p2p.ipv4(bytes(4)))
+        self.assertIsNone(p2p.ipv4(b""))
 
     def test_receiver_ports_and_p2p(self):
         c = cfgmod.parse({"miracast": {"rtp_base_port": 2000, "p2p_address": "192.0.2.1/24"}})
