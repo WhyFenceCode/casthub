@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import socket
+import time
 from pathlib import Path
 
 from dbus_fast import BusType, Message, MessageType, Variant
@@ -40,6 +41,7 @@ PROPS = "org.freedesktop.DBus.Properties"
 RUN = Path("/run/casthub")
 SOCK = RUN / "p2p.sock"
 NM_LEASES = Path("/var/lib/NetworkManager")    # dnsmasq-<group if>.leases when we are GO
+INVITE_FALLBACK_S = 10        # after refusing an invitation, wait this long for the PC to pair afresh
 ZONE = "casthub-p2p"            # firewalld zone (system/firewalld/casthub-p2p.xml): DHCP + RTP
 
 
@@ -62,6 +64,7 @@ class P2PDaemon:
         self.clients: set[asyncio.StreamWriter] = set()
         self.group_if = ""
         self.connecting = False            # NM is pairing with a PC (one at a time)
+        self.pair_started = 0.0
         self.saved_methods: str | None = None   # WPS config methods before we advertised
         self.peers: dict[str, int] = {}    # peer path → RTSP port from its WFD IE
         self.announced: set[str] = set()
@@ -243,11 +246,22 @@ class P2PDaemon:
             await self.call(self.dev, P2PDEV, "RemoveAllPersistentGroups")
 
     async def on_invitation(self, props: dict, *_):
+        """Windows remembers the last group (it marks the group it owns persistent) and, next
+        time, only invites us back to it. Joining it would start a group NetworkManager didn't
+        start, which NM removes at once. So we have no saved group: wpa_supplicant answers
+        "unknown group", and Windows should fall back to pairing afresh (push-button), which
+        reaches pair(). Pairing on top of the invitation made Windows ignore us, so we only
+        start it ourselves if the PC hasn't asked within a few seconds."""
         sa = props.get("sa")
         if not sa or not self.advertising:
             return
         await self.forget_groups()
-        log.info("the PC invited us to an old group; pairing afresh instead")
+        asked = time.monotonic()
+        log.info("the PC invited us to an old group; refused, waiting for it to pair afresh")
+        await asyncio.sleep(INVITE_FALLBACK_S)
+        if self.connecting or self.announced or self.pair_started > asked or not self.advertising:
+            return
+        log.info("the PC did not pair afresh within %d s; asking it to", INVITE_FALLBACK_S)
         want = bytes(sa.value).hex()
         with contextlib.suppress(RuntimeError):
             for peer in await self.get(self.dev, P2PDEV, "Peers"):
@@ -279,6 +293,7 @@ class P2PDaemon:
         if not self.advertising or self.connecting:
             return
         self.connecting = True
+        self.pair_started = time.monotonic()
         try:
             with contextlib.suppress(RuntimeError):
                 port = p2p.parse_wfd_rtsp_port(bytes(await self.get(peer, PEER, "IEs")))
