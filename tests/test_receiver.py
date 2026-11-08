@@ -129,7 +129,8 @@ class FakeSource:
         uri = "rtsp://localhost/wfd1.0"
         self.m1 = await req("OPTIONS", "*")
         # The sink's M2 arrives while we wait for M3's answer; expect_response() serves it.
-        r3 = await req("GET_PARAMETER", uri, "wfd_video_formats\r\nwfd_audio_codecs\r\nwfd_client_rtp_ports\r\nwfd_connector_type\r\nmicrosoft_cursor\r\n")
+        r3 = await req("GET_PARAMETER", uri, "wfd_video_formats\r\nwfd_audio_codecs\r\nwfd_client_rtp_ports\r\n"
+                       "wfd_connector_type\r\nmicrosoft_cursor\r\n")
         self.m3_reply = r3.body
         await req("SET_PARAMETER", uri,
                   "wfd_video_formats: 00 00 02 10 00000080 00000000 00000000 00 0000 0000 00 none none\r\n"
@@ -264,6 +265,45 @@ class TestReceiverFlow(unittest.TestCase):
         self.assertEqual(states[:3], ["idle", "connecting", "streaming"])
         self.assertTrue(any(e["cmd"] == "busy" and "<pc-2>" in e["text"] for e in events))
         self.assertTrue(FakePipeline.instances[-1].stopped)
+
+
+class SilentPipeline(FakePipeline):
+    """Packets arrived once, then stopped (the Wi-Fi Direct link dropped)."""
+
+    last_packet = 1.0
+
+    def silent_for(self):
+        return 60.0
+
+
+class TestLinkLost(unittest.TestCase):
+    def test_cast_ends_when_packets_stop(self):
+        async def go():
+            events = []
+
+            async def notify(msg):
+                events.append(msg)
+
+            src = FakeSource(keepalive=True, hold=True)
+            rtsp_port = await src.start()
+            rec = Receiver("<receiver>", "OUT-1", (1920, 1080), 0, 1028, "reject", notify, SilentPipeline)
+            await rec.start()
+            _r, w = await asyncio.open_connection("127.0.0.1", rec.mice_port)
+            w.write(mp.source_ready("<pc-name>", rtsp_port, SOURCE_ID))
+            states = []
+            for _ in range(250):          # the link watch checks once a second
+                states.append(rec.state)
+                if "streaming" in states and rec.state == "idle":
+                    break
+                await asyncio.sleep(0.02)
+            final = rec.state
+            w.close()                     # the listener waits for open control connections
+            await rec.stop()
+            return states, final
+
+        states, final = run(go())
+        self.assertIn("streaming", states)
+        self.assertEqual(final, "idle")
 
 
 class TestDiscovery(unittest.TestCase):

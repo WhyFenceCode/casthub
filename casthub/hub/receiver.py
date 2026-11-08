@@ -20,6 +20,7 @@ from casthub.rtsp.sink import RtspError, RtspSink, SinkCaps
 
 log = logging.getLogger("casthub.hub")
 FIRST_FRAME_IDR_AFTER = 3.0
+LINK_LOST_S = 8          # no RTP packets for this long: the link is gone, end the cast
 
 
 @dataclass
@@ -141,7 +142,20 @@ class Receiver:
                     await first_frame.wait()
                 await self.set_state("streaming", src.name)
 
-            tasks = {asyncio.create_task(c) for c in (sink.serve(), src.stop.wait(), asyncio.wait_for(failed, None))}
+            async def link_watch() -> str:
+                """The PC's video stopped arriving (e.g. the Wi-Fi Direct link dropped): end the
+                cast so the screen goes back to waiting, instead of keeping a dead picture."""
+                started = loop.time()
+                while True:
+                    await asyncio.sleep(1)
+                    silent = pipe.silent_for() if hasattr(pipe, "silent_for") else 0.0
+                    never = not silent and not getattr(pipe, "last_packet", 1) and loop.time() - started > LINK_LOST_S
+                    if silent > LINK_LOST_S or never:
+                        log.warning("%s: no video from the PC for %d s; ending the cast", self.name, LINK_LOST_S)
+                        return "link lost"
+
+            tasks = {asyncio.create_task(c) for c in (sink.serve(), src.stop.wait(), asyncio.wait_for(failed, None),
+                                                      link_watch())}
             watch = asyncio.create_task(frame_watch())
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             watch.cancel()

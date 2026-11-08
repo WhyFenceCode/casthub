@@ -13,6 +13,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -43,6 +44,7 @@ class MediaSpec:
     video_sink: str = "waylandsink"
     audio_sink: str = "pipewiresink"
     latency_ms: int = 120
+    capture: str = ""               # also write the PC's MPEG-TS to this file (debugging; keep it in local/)
 
 
 STATS_S = 5
@@ -77,7 +79,7 @@ def describe(spec: MediaSpec) -> str:
     parts = [
         f'udpsrc name=src port={spec.rtp_port} buffer-size=2097152 caps="{caps}"',
         f"rtpjitterbuffer name=jb latency={spec.latency_ms}",
-        "rtpmp2tdepay name=depay", "tsdemux name=demux latency=0",
+        "rtpmp2tdepay name=depay" + (" ! tee name=cap ! queue" if spec.capture else ""), "tsdemux name=demux latency=0",
         "demux. ! video/x-h264 ! queue name=vq max-size-time=0 max-size-bytes=0 max-size-buffers=64 ! h264parse name=vparse"
         f" ! {spec.decoder}{_to_screen(spec)} ! {sink} name=vsink",
     ]
@@ -88,6 +90,8 @@ def describe(spec: MediaSpec) -> str:
         # its queue drops old audio rather than block the demuxer.
         desc += (f" demux. ! audio/mpeg ! queue name=aq leaky=downstream max-size-time=500000000 ! aacparse ! avdec_aac"
                  f" ! audioconvert ! audioresample ! {spec.audio_sink} name=asink sync=false")
+    if spec.capture:   # the stream exactly as the PC sent it, to replay with filesrc ! tsdemux
+        desc += f' cap. ! queue leaky=downstream ! filesink location="{spec.capture}" sync=false async=false'
     return desc
 
 
@@ -107,6 +111,7 @@ class Pipeline:
         self._seen_frame = False
         self.counts = dict.fromkeys([name for name, _, _ in STAGES], 0)   # bumped on streaming threads
         self.caps_logged = False
+        self.last_packet = 0.0                 # monotonic time of the last RTP packet (0 = none yet)
 
     def start(self) -> None:
         g = gst()
@@ -128,6 +133,8 @@ class Pipeline:
         def counter(stage):
             def probe(_pad, _info):
                 self.counts[stage] += 1
+                if stage == "net":
+                    self.last_packet = time.monotonic()
                 return g.PadProbeReturn.OK
             return probe
 
@@ -151,6 +158,10 @@ class Pipeline:
             self.stop()
             raise RuntimeError(why)
         self._poll = asyncio.create_task(self._watch())
+
+    def silent_for(self) -> float:
+        """Seconds since the last RTP packet; 0 before the first one."""
+        return time.monotonic() - self.last_packet if self.last_packet else 0.0
 
     def jitter_stats(self) -> str:
         jb = self.pipe.get_by_name("jb") if self.pipe else None
@@ -202,7 +213,8 @@ class Pipeline:
 
 
 def default_spec(rtp_port: int, title: str, output: str = "") -> MediaSpec:
-    """Environment overrides for testing on other machines: CASTHUB_DECODER, CASTHUB_VIDEO_SINK."""
+    """Environment overrides for testing: CASTHUB_DECODER, CASTHUB_VIDEO_SINK, CASTHUB_CAPTURE (a file)."""
     return MediaSpec(rtp_port, title, output,
                      decoder=os.environ.get("CASTHUB_DECODER", "vah264dec"),
-                     video_sink=os.environ.get("CASTHUB_VIDEO_SINK", "waylandsink"))
+                     video_sink=os.environ.get("CASTHUB_VIDEO_SINK", "waylandsink"),
+                     capture=os.environ.get("CASTHUB_CAPTURE", ""))
