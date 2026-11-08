@@ -13,6 +13,8 @@
   Intel Wi-Fi firmware every time it failed (NMI_INTERRUPT_UMAC_FATAL). As group owner we never
   make that request.
 - When the PC has its address, tells the hub where its RTSP server is.
+- Runs the hub's hotspot (discovery/hotspot.py) while a hub is on screen; a Wi-Fi Direct cast
+  pauses it (the radio has one slot for an access point or a group).
 
 - Gives the radio a new random Wi-Fi Direct address when the hub asks (each new receiver name),
   so Windows treats us as a new display. wpa_supplicant only picks that address when it sets up
@@ -39,7 +41,7 @@ from dbus_fast import BusType, Message, MessageType, Variant
 from dbus_fast.aio import MessageBus
 
 from casthub import config as cfgmod
-from casthub.discovery import dhcp, p2p
+from casthub.discovery import dhcp, hotspot, p2p
 
 log = logging.getLogger("casthub.p2p")
 WPAS = "fi.w1.wpa_supplicant1"
@@ -96,6 +98,8 @@ class P2PDaemon:
         self.address_due = False           # the hub asked for a new Wi-Fi Direct address
         self.busy = False                  # the hub is casting: not discoverable (set_busy)
         self.mice_addresses: list[str] = []      # our Wi-Fi IPv4 address(es) in the MS-MICE attributes
+        self.hotspot = hotspot.Hotspot(self)
+        self.hotspot_held = False          # a Wi-Fi Direct cast paused the hotspot
 
     # ---- D-Bus helpers -------------------------------------------------------------
     async def call(self, path: str, iface: str, member: str, sig: str = "", body: list | None = None, dest: str = WPAS):
@@ -128,6 +132,7 @@ class P2PDaemon:
 
     async def start(self) -> None:
         self.bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+        await self.hotspot.cleanup()
         await self.find_device()
         self.bus.add_message_handler(self.on_signal)
         await self.call("/org/freedesktop/DBus", "org.freedesktop.DBus", "AddMatch", "s",
@@ -143,10 +148,14 @@ class P2PDaemon:
         async with self.radio:
             if self.address_due and not self.connecting and not self.announced:
                 self.address_due = False
+                # Wi-Fi drops while the interface is re-added; the hotspot waits for it to return.
+                await self.hotspot.pause("a new Wi-Fi Direct address")
                 try:
                     await self.new_address()
                 except Exception:
                     log.exception("new Wi-Fi Direct address failed")
+                finally:
+                    await self.hotspot.resume()
             await self._advertise()
         self.broadcast({"event": "advertised", "name": self.name})     # the hub shows the name now
 
@@ -315,6 +324,8 @@ class P2PDaemon:
         with contextlib.suppress(RuntimeError):     # sink, session *not* available
             await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements(available=False))
         await self.close_group()                                     # ends a Wi-Fi Direct cast, if any
+        self.hotspot_held = False
+        await self.hotspot.stop()
         if self.saved_methods is not None:
             with contextlib.suppress(RuntimeError):
                 await self.set(self.dev, WPS, "ConfigMethods", "s", self.saved_methods)
@@ -437,9 +448,13 @@ class P2PDaemon:
                 if port:
                     self.peers[peer] = port
             log.info("pairing with the PC as group owner (push-button)")
+            if not self.hotspot_held:
+                self.hotspot_held = True
+                await self.hotspot.pause("a Wi-Fi Direct cast")
             await self.connect(peer)
         except Exception:
             self.connecting = False
+            await self.release_hotspot()
             raise
         self.pair_watch = asyncio.create_task(self._guard(self.pair_deadline(self.pair_started)))
 
@@ -569,6 +584,12 @@ class P2PDaemon:
         if self.advertising:          # the group's end clears the WFD IEs
             with contextlib.suppress(RuntimeError):
                 await self.advertise()
+        await self.release_hotspot()
+
+    async def release_hotspot(self) -> None:
+        if self.hotspot_held:
+            self.hotspot_held = False
+            await self.hotspot.resume()
 
     # ---- hub socket ----------------------------------------------------------------------
     def broadcast(self, event: dict) -> None:
@@ -602,6 +623,7 @@ class P2PDaemon:
                     if msg.get("cmd") == "advertise":
                         self.name, self.port = str(msg["name"]), int(msg.get("port", self.port))
                         await self.advertise(new_address=bool(msg.get("new_address")))
+                        asyncio.ensure_future(self._guard(self.hotspot.start()))    # once per hub session
                     elif msg.get("cmd") == "busy":
                         await self.set_busy(bool(msg.get("busy")))
                 except (ValueError, KeyError, RuntimeError) as e:
@@ -630,8 +652,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--config", type=Path, default=cfgmod.DEFAULT_PATH)
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="casthub-p2p: %(message)s")
-    asyncio.run(P2PDaemon(cfgmod.load(a.config)).serve())
+    asyncio.run(run(P2PDaemon(cfgmod.load(a.config))))
     return 0
+
+
+async def run(d: P2PDaemon) -> None:
+    """Serve until SIGTERM/SIGINT, then take the hotspot down (and give our Wi-Fi back)."""
+    import signal
+    task = asyncio.current_task()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, task.cancel)
+    try:
+        await d.serve()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(d.hotspot.stop(), 15)
 
 
 if __name__ == "__main__":

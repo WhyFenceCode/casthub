@@ -121,12 +121,11 @@ class DisplayUI(QObject):
         return [v.rootObject() for v in self.views.values() if v.rootObject()]
 
     def refresh_qr(self) -> None:
-        qr = ""
-        if self.cfg.hotspot:
-            try:
-                qr = QR_FILE.read_text().strip()
-            except OSError:
-                qr = ""
+        # The file exists only while the hotspot is up (casthub-p2p writes it): shown only then (D13).
+        try:
+            qr = QR_FILE.read_text().strip()
+        except OSError:
+            qr = ""
         if qr != self.qr:
             self.qr = qr
             for r in self.roots():

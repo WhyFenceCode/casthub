@@ -1,12 +1,13 @@
-"""A minimal DHCP server for the Wi-Fi Direct group, where Cast Hub is the group owner.
+"""A minimal DHCP server for the Wi-Fi Direct group (Cast Hub is the group owner) and the hotspot.
 
 One PC joins the group per cast; it asks for an address (DISCOVER → OFFER, REQUEST → ACK) and
 then serves its RTSP stream from it. We hand out addresses from a small pool and report each
 lease, so casthub-p2p knows where the PC is at once (no lease file to watch).
 
 Why not dnsmasq: casthub-p2p runs with NoNewPrivileges, so starting dnsmasq can't switch to
-its SELinux domain; and only this one tiny job is needed. No router or DNS options: the link is
-only for the cast. RFC 2131 / RFC 2132.
+its SELinux domain; and only this one tiny job is needed. No router or DNS options unless the
+hotspot shares our internet: otherwise the link is only for casting, and phones keep using mobile
+data for everything else. RFC 2131 / RFC 2132.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ log = logging.getLogger("casthub.p2p")
 
 MAGIC = b"\x63\x82\x53\x63"
 DISCOVER, OFFER, REQUEST, DECLINE, ACK, NAK, RELEASE, INFORM = 1, 2, 3, 4, 5, 6, 7, 8
+OPT_ROUTER, OPT_DNS = 3, 6
 OPT_MASK, OPT_HOSTNAME, OPT_REQUESTED, OPT_LEASE, OPT_TYPE, OPT_SERVER, OPT_END = 1, 12, 50, 51, 53, 54, 255
 LEASE_S = 3600
 HEADER = struct.Struct("!BBBBIHH4s4s4s4s16s64s128s")      # op .. file (236 bytes)
@@ -75,22 +77,29 @@ def parse(data: bytes) -> Request | None:
                    addr(OPT_REQUESTED), addr(OPT_SERVER), opts.get(OPT_HOSTNAME, b"").decode(errors="replace"))
 
 
-def reply(req: Request, kind: int, yiaddr: str, server: str, mask: str, lease_s: int = LEASE_S) -> bytes:
+def reply(req: Request, kind: int, yiaddr: str, server: str, mask: str, lease_s: int = LEASE_S,
+          router: str = "", dns: tuple[str, ...] = ()) -> bytes:
     """OFFER / ACK (with the address) or NAK (yiaddr 0.0.0.0)."""
     head = HEADER.pack(2, 1, 6, 0, req.xid, 0, req.flags, b"\0" * 4, socket.inet_aton(yiaddr),
                        socket.inet_aton(server), b"\0" * 4, req.chaddr.ljust(16, b"\0"), b"\0" * 64, b"\0" * 128)
     opts = bytes([OPT_TYPE, 1, kind]) + bytes([OPT_SERVER, 4]) + socket.inet_aton(server)
     if kind != NAK:
         opts += bytes([OPT_LEASE, 4]) + struct.pack("!I", lease_s) + bytes([OPT_MASK, 4]) + socket.inet_aton(mask)
+        if router:
+            opts += bytes([OPT_ROUTER, 4]) + socket.inet_aton(router)
+        if dns:
+            opts += bytes([OPT_DNS, 4 * len(dns)]) + b"".join(socket.inet_aton(a) for a in dns)
     return head + MAGIC + opts + bytes([OPT_END])
 
 
 class Pool:
     """Addresses for the group's clients; the same client keeps its address."""
 
-    def __init__(self, network: str, server: str, first: int = 10, last: int = 99) -> None:
+    def __init__(self, network: str, server: str, first: int = 10, last: int = 99,
+                 router: str = "", dns: tuple[str, ...] = ()) -> None:
         self.net = ipaddress.IPv4Network(network)
         self.server = server
+        self.router, self.dns = router, dns[:4]      # only when the hotspot shares our internet
         self.free = [str(self.net[i]) for i in range(first, last + 1) if str(self.net[i]) != server]
         self.leases: dict[str, str] = {}       # mac → address
 
@@ -118,14 +127,14 @@ def answer(pool: Pool, req: Request) -> tuple[bytes | None, str | None]:
     """The reply to send (or None), and the address just leased (on ACK)."""
     if req.kind == DISCOVER:
         ip = pool.offer(req.mac, req.requested)
-        return (reply(req, OFFER, ip, pool.server, pool.mask), None) if ip else (None, None)
+        return (reply(req, OFFER, ip, pool.server, pool.mask, router=pool.router, dns=pool.dns), None) if ip else (None, None)
     if req.kind == REQUEST:
         if req.server and req.server != pool.server:
             return None, None                          # the client chose another server
         want = req.requested or req.ciaddr
         ip = pool.offer(req.mac, want)
         if ip and (not want or want == "0.0.0.0" or want == ip):
-            return reply(req, ACK, ip, pool.server, pool.mask), ip
+            return reply(req, ACK, ip, pool.server, pool.mask, router=pool.router, dns=pool.dns), ip
         return reply(req, NAK, "0.0.0.0", pool.server, pool.mask), None
     if req.kind in (RELEASE, DECLINE):
         pool.release(req.mac)
@@ -135,8 +144,9 @@ def answer(pool: Pool, req: Request) -> tuple[bytes | None, str | None]:
 class Server(asyncio.DatagramProtocol):
     """Serves DHCP on one interface. `on_lease(address, mac, hostname)` after each ACK."""
 
-    def __init__(self, ifname: str, pool: Pool, on_lease: Callable[[str, str, str], None]) -> None:
-        self.ifname, self.pool, self.on_lease = ifname, pool, on_lease
+    def __init__(self, ifname: str, pool: Pool, on_lease: Callable[[str, str, str], None],
+                 label: str = "the Wi-Fi Direct group") -> None:
+        self.ifname, self.pool, self.on_lease, self.label = ifname, pool, on_lease, label
         self.transport: asyncio.DatagramTransport | None = None
 
     async def start(self) -> None:
@@ -147,7 +157,7 @@ class Server(asyncio.DatagramProtocol):
         sock.bind(("", 67))
         sock.setblocking(False)
         self.transport, _ = await asyncio.get_running_loop().create_datagram_endpoint(lambda: self, sock=sock)
-        log.info("DHCP for the Wi-Fi Direct group on %s (%s)", self.ifname, self.pool.net)
+        log.info("DHCP for %s on %s (%s)", self.label, self.ifname, self.pool.net)
 
     def stop(self) -> None:
         if self.transport:
@@ -163,5 +173,5 @@ class Server(asyncio.DatagramProtocol):
             # The client has no address yet: broadcast (always allowed, RFC 2131 4.1).
             self.transport.sendto(out, ("255.255.255.255", 68))
         if leased:
-            log.info("DHCP: gave the PC %s", leased)
+            log.info("DHCP (%s): leased %s", self.label, leased)
             self.on_lease(leased, req.mac, req.hostname)

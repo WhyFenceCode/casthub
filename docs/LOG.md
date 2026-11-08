@@ -308,3 +308,19 @@ Windows with 14, so the PC always owned the group.
   different channel from our Wi-Fi (two channels, the radio splitting its time), and formation
   timed out after 15 s. The group now always takes our Wi-Fi's channel (Connect `frequency`),
   which the hotspot stage needs anyway. Covered by a test.
+
+## School Wi-Fi, stage 2: the hub's hotspot, 2026-11-08
+
+Owner: the "same network, another router" test can't happen at home (the only other network is
+school's). Hotspot decisions (SPEC D28): `mode = auto | always | off` (default always), internet
+sharing as a setting (default off), a Wi-Fi Direct cast pauses the hotspot.
+- casthub-p2p runs it (`discovery/hotspot.py`): a `casthub-ap` interface in AP mode through
+  wpa_supplicant (no hostapd), on our Wi-Fi's channel; on a radar/DFS channel it leaves that
+  network and runs alone. Its own /24, our DHCP server, firewall zone `casthub-hotspot`, a fresh
+  name and password per start, the join code in `/run/casthub/hotspot-qr.txt` for the idle screen.
+- Paused (QR hidden) during a Wi-Fi Direct cast and while the Wi-Fi interface is re-added for a
+  new Wi-Fi Direct address; follows our Wi-Fi to a new channel; stops with the hub or the service.
+- `share_internet`: firewalld policy `casthub-share` (NAT), given our Wi-Fi's zone at run time only.
+- Tests: helpers, channel rules, each route, pause nesting, sharing, a failed start, config.
+  Live test pending: iPhone scans the QR, joins, AirPlay over the hotspot; then a Windows cast
+  over Wi-Fi Direct (hotspot pauses, comes back).

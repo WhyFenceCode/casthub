@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Cast Hub hotspot (casthub-ap, run by casthub-p2p). Only what casting needs: DHCP and mDNS
+     for phones joining, AirPlay (UxPlay's fixed ports), MS-MICE (Win + K over the hotspot) and the
+     RTP ports the receiver listens on. -->
+<zone>
+  <short>Cast Hub hotspot</short>
+  <description>Phones and PCs casting to Cast Hub over its own Wi-Fi.</description>
+  <service name="dhcp"/>
+  <service name="mdns"/>
+  <port protocol="tcp" port="7000-7001"/>
+  <port protocol="tcp" port="7100"/>
+  <port protocol="udp" port="6000-6001"/>
+  <port protocol="udp" port="7011"/>
+  <port protocol="tcp" port="7250"/>
+  <port protocol="udp" port="1028-1099"/>
+</zone>

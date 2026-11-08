@@ -122,6 +122,14 @@ class TestPairAsGroupOwner(unittest.TestCase):
         d.freq = 5745
         d.call, d.get, d.run, d.wifi_addresses = call, get, run, wifi_addresses
         d.station_frequency = station_frequency
+
+        class FakeHotspot:
+            async def pause(self, why):
+                d.calls.append(("hotspot", "pause", why))
+
+            async def resume(self):
+                d.calls.append(("hotspot", "resume", None))
+        d.hotspot, d.hotspot_held = FakeHotspot(), False
         d.broadcast = lambda ev: d.calls.append(("hub", ev["event"], ev))
         return d
 
@@ -140,6 +148,13 @@ class TestPairAsGroupOwner(unittest.TestCase):
         self.assertEqual(body[0]["peer"].value, "/peer/1")
         self.assertFalse(body[0]["persistent"].value)
         self.assertEqual(body[0]["frequency"].value, 5745)            # our Wi-Fi's channel
+        self.assertIn(("hotspot", "pause", "a Wi-Fi Direct cast"), d.calls)   # one radio slot
+
+        async def ended():
+            d.advertising = False
+            await d.end_session()
+        asyncio.run(ended())
+        self.assertEqual(d.calls[-1], ("hotspot", "resume", None))           # back after the cast
 
     def test_connect_without_wifi_lets_the_radio_choose(self):
         d = self.daemon()

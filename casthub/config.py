@@ -16,6 +16,7 @@ LAYOUTS = ("mirror_all",)
 # Old configs that still say so get mirror_all.
 OLD_LAYOUTS = ("per_screen", "per_radio")
 THEMES = ("auto", "light", "dark")
+HOTSPOT_MODES = ("auto", "always", "off")
 
 
 class ConfigError(ValueError):
@@ -39,9 +40,9 @@ class Config:
     rtp_base_port: int = 1028           # receiver n receives RTP on rtp_base_port + 2n
     busy_policy: str = "reject"
     airplay: bool = True
-    hotspot: bool = False
-    hotspot_interface: str = ""
-    hotspot_ssid: str = ""
+    hotspot_mode: str = "always"        # auto (only when the network blocks casts) | always | off
+    hotspot_share: bool = False         # hotspot devices get internet through our Wi-Fi (NAT)
+    hotspot_ssid: str = ""              # "" = a fresh "Cast Hub XXXX" each time it starts
     pin_hash: str = ""
     theme: str = "auto"                 # Display screens: auto (by time of day) | light | dark
     location: str = ""                  # shown on the idle screen, e.g. "<city>, <region>"
@@ -111,6 +112,16 @@ def parse(data: dict) -> Config:
             raise ConfigError(f"miracast.p2p_address must be <ipv4>/<prefix>, got {p2p_address!r}") from None
         if "/" not in p2p_address:
             raise ConfigError("miracast.p2p_address needs a prefix length, e.g. /24")
+    hs_mode = _get(hs, "mode", str, "")
+    if not hs_mode:                      # older configs: enabled = true | false
+        hs_mode = "always" if _get(hs, "enabled", bool, True) else "off"
+    if hs_mode not in HOTSPOT_MODES:
+        raise ConfigError(f"hotspot.mode must be one of {HOTSPOT_MODES}, got {hs_mode!r}")
+    ssid = _get(hs, "ssid", str, d.hotspot_ssid)
+    if ssid.startswith("<"):             # the example's placeholder
+        ssid = ""
+    if len(ssid.encode()) > 32:
+        raise ConfigError("hotspot.ssid is longer than 32 bytes")
     if _get(sw, "pin", str, ""):
         raise ConfigError("switcher.pin is plain text; set it with `casthub-pin` so only pin_hash is stored")
     lat = _get(disp, "latitude", (int, float), None)
@@ -134,9 +145,9 @@ def parse(data: dict) -> Config:
         rtp_base_port=rtp_port,
         busy_policy=busy,
         airplay=_get(ap, "enabled", bool, d.airplay),
-        hotspot=_get(hs, "enabled", bool, d.hotspot),
-        hotspot_interface=_get(hs, "interface", str, d.hotspot_interface),
-        hotspot_ssid=_get(hs, "ssid", str, d.hotspot_ssid),
+        hotspot_mode=hs_mode,
+        hotspot_share=_get(hs, "share_internet", bool, d.hotspot_share),
+        hotspot_ssid=ssid,
         pin_hash=_get(sw, "pin_hash", str, d.pin_hash),
         theme=theme,
         location=_get(disp, "location", str, d.location),

@@ -66,8 +66,15 @@ address (a few seconds without Wi-Fi). If Wi-Fi stays down after that: `nmcli de
 <wifi-device>`, or restart wpa_supplicant and NetworkManager (last line below), which also goes
 back to the radio's own address.
 
+The hotspot (`casthub-ap`) also belongs to casthub-p2p: it is up only while a hub is on screen,
+and stopping the service takes it down. If the hub's Wi-Fi channel didn't allow an access point,
+casthub-p2p disconnected our Wi-Fi to run the hotspot alone; it reconnects when the hotspot stops.
+If the service died first: `sudo iw dev casthub-ap del`, then `nmcli device connect <wifi-device>`.
+To turn the hotspot off: `[hotspot] mode = "off"` in `/etc/casthub/casthub.toml`.
+
 ```sh
 sudo systemctl disable --now casthub-p2p.service
+sudo rm /etc/firewalld/zones/casthub-hotspot.xml /etc/firewalld/policies/casthub-share.xml
 sudo rm /etc/systemd/system/casthub-p2p.service /etc/firewalld/zones/casthub-p2p.xml
 sudo rm /etc/NetworkManager/conf.d/90-casthub-p2p.conf && sudo nmcli general reload conf
 sudo systemctl daemon-reload && sudo firewall-cmd --reload

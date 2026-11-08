@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Internet for hotspot devices ([hotspot] share_internet = true): NAT out through our Wi-Fi.
+     No egress zone here, so it does nothing until casthub-p2p adds our Wi-Fi's zone at run time
+     (firewall-cmd --policy=casthub-share --add-egress-zone=<zone>, not permanent). -->
+<policy target="ACCEPT">
+  <short>Cast Hub hotspot internet</short>
+  <ingress-zone name="casthub-hotspot"/>
+  <masquerade/>
+</policy>

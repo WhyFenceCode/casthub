@@ -22,10 +22,13 @@ p2p_address = ""                 # unused (NetworkManager addresses Wi-Fi Direct
 enabled = true
 
 [hotspot]
-enabled = false
-interface = "wlan1"              # USB Wi-Fi adapter
-ssid = "<ssid>"
-# The passphrase is NOT stored here; it lives in NetworkManager's system connection.
+# The hub's own Wi-Fi network for phones when the network keeps devices apart (school Wi-Fi).
+# It shares the radio with Wi-Fi: same channel as the network we're on (on a radar/DFS channel
+# the hub leaves that network and runs the hotspot alone). A Wi-Fi Direct cast pauses it.
+mode = "always"                  # auto (only when the network blocks casts) | always | off
+share_internet = false           # true: hotspot devices get internet through our Wi-Fi
+ssid = "<ssid>"                  # optional; default a fresh "Cast Hub XXXX" each start
+# The password is new each time the hotspot starts; the QR code on screen carries it.
 
 [switcher]
 # Set with `casthub-pin` (writes pin_hash only; a plain `pin` here is refused).

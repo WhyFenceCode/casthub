@@ -168,7 +168,8 @@ Rectangle {
                 var name = root.receiverName ? " › " + root.receiverName : ""     // none while loading
                 if (root.airplay) r.push({ k: "Apple · AirPlay", v: "Control Centre › Screen Mirroring" + name })
                 r.push({ k: "Windows · Miracast", v: "Press Win + K" + name })
-                if (root.qrPayload) r.push({ k: "Anything else", v: "Scan the code to pair" })
+                // The hub's own Wi-Fi: for phones whose network keeps them from reaching the hub.
+                if (root.qrPayload) r.push({ k: "Not in the list", v: "Scan the code to join Cast Hub's Wi-Fi" })
                 return r
             }
             Repeater {
