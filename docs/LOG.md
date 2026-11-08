@@ -201,3 +201,17 @@ since Wi-Fi Direct offers only one receiver per radio.
   `via mice` (MS-MICE over the network, port 7250), 960x540p60 at a steady 60 fps. After the
   cast: Loading, a new name and a new Wi-Fi Direct address. The video sink hung on stop again
   ("did not stop; exiting anyway") and only its own process was affected, as designed.
+
+## M4: multi-port test (failed, set aside by owner), 2026-11-08
+
+Test: `casthub-display --screens 2`, two receivers on one radio, CAST-U2X8P (7250, also
+announced over Wi-Fi Direct) and CAST-6EX4B (7251), both published over mDNS
+(`_display._tcp`). Win + K listed only CAST-U2X8P; a cast to it played `via mice`.
+
+- Finding: Windows builds the Win + K list from Wi-Fi Direct (P2P) discovery, not from mDNS;
+  mDNS only resolves a receiver it already found. A radio announces one P2P device, so one
+  radio gives one entry in Win + K: `per_screen` doesn't work with Windows.
+- Layout options left (SPEC "Screens and layout modes"): `per_radio` (a USB Wi-Fi adapter per
+  extra screen) or `mirror_all`. Owner: set aside for now; this Chromebook has one screen.
+- Also seen: receiver 0 landed on the second panel screen (WL-2); the hub does not sort
+  outputs. Fix with the multi-screen work.
