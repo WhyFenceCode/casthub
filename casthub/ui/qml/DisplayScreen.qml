@@ -9,7 +9,7 @@ Rectangle {
 
     // ---- state from the hub ---------------------------------------------------
     property string screenState: "idle"          // idle | connecting | streaming
-    property string receiverName: "Cast Hub-1"
+    property string receiverName: ""            // "" until the hub says Windows can find it: "Loading"
     property string deviceName: ""          // sender, while connecting/streaming
     property string busyText: ""            // non-empty: show the busy toast
     property string pinCode: ""             // Wi-Fi Direct pairing: the PIN to type on the PC
@@ -30,6 +30,18 @@ Rectangle {
     property date now: new Date()
     Timer { interval: 1000; running: root.fixedNow === null; repeat: true; onTriggered: root.now = new Date() }
     readonly property date clockNow: fixedNow !== null ? fixedNow : now
+
+    // ---- loading dots: four periods, a purple one sweeps along them, then a beat in the
+    // text colour, so a wait never looks like a freeze ---------------------------------
+    readonly property bool loading: receiverName === "" || screenState === "connecting"
+    property int dotStep: 0                 // 0-3: that period is purple; 4: none
+    Timer { interval: 220; running: root.loading; repeat: true; onTriggered: root.dotStep = (root.dotStep + 1) % 5 }
+    function dotted(base, spaced) {
+        var out = base
+        for (var i = 0; i < 4; i++)         // spaced: thin spaces, the display style's tight tracking joins the dots
+            out += (i && spaced ? "\u2009" : "") + (i === root.dotStep ? "<font color=\"" + t.accent + "\">.</font>" : ".")
+        return out
+    }
 
     readonly property bool dark: theme === "dark" || theme === "auto" && (clockNow.getHours() < 7 || clockNow.getHours() >= 19)
 
@@ -91,11 +103,12 @@ Rectangle {
             x: root.margin
             y: 435 * root.uy - baselineOffset
             u: root.u; tok: t
-            textStyle: root.pinCode || root.screenState === "connecting" ? t.ddate : t.dname
-            color: root.pinCode || root.screenState === "connecting" ? t.muted : t.fg
+            textStyle: root.pinCode || root.loading ? t.ddate : t.dname
+            color: root.pinCode || root.loading ? t.muted : t.fg
+            textFormat: Text.StyledText
             text: root.pinCode ? "Type this PIN on your PC"
-                  : root.screenState === "connecting" ? "Connecting…"
-                  : root.receiverName      // the name to pick in Win + K / Screen Mirroring; the date is in the bar
+                  : root.screenState === "connecting" ? root.dotted("Connecting", true)
+                  : root.receiverName || root.dotted("Loading", true)   // the name to pick in Win + K / Screen Mirroring
         }
         Label {
             anchors.right: parent.right; anchors.rightMargin: root.margin
@@ -128,7 +141,9 @@ Rectangle {
             Label {
                 x: 17 * root.ux; anchors.verticalCenter: parent.top
                 u: root.u; tok: t; textStyle: t.dlabel
-                text: root.pinCode ? "Pairing" : root.screenState === "connecting" ? "Connecting…" : "Waiting for a device"
+                textFormat: Text.StyledText
+                text: root.pinCode ? "Pairing" : root.screenState === "connecting" ? root.dotted("Connecting")
+                      : root.receiverName ? "Waiting for a device" : root.dotted("Getting ready")
             }
             Label {
                 y: 24 * root.uy - height / 2
@@ -150,8 +165,9 @@ Rectangle {
             verticalItemAlignment: Grid.AlignVCenter
             readonly property var rows: {
                 var r = []
-                if (root.airplay) r.push({ k: "Apple · AirPlay", v: "Control Centre › Screen Mirroring › " + root.receiverName })
-                r.push({ k: "Windows · Miracast", v: "Press Win + K › " + root.receiverName })
+                var name = root.receiverName ? " › " + root.receiverName : ""     // none while loading
+                if (root.airplay) r.push({ k: "Apple · AirPlay", v: "Control Centre › Screen Mirroring" + name })
+                r.push({ k: "Windows · Miracast", v: "Press Win + K" + name })
                 if (root.qrPayload) r.push({ k: "Anything else", v: "Scan the code to pair" })
                 return r
             }

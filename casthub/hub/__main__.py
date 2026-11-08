@@ -25,6 +25,7 @@ from casthub.hub.receiver import Receiver
 
 log = logging.getLogger("casthub.hub")
 P2P_SOCK = Path("/run/casthub/p2p.sock")
+P2P_CONFIRM_S = 45          # a new Wi-Fi Direct address re-adds Wi-Fi (up to ~30 s to reconnect)
 
 
 def drm_outputs() -> list[tuple[str, tuple[int, int]]]:
@@ -130,6 +131,11 @@ class Hub:
         self.receivers: list[Receiver] = []
         self.p2p_task: asyncio.Task | None = None
         self.p2p_writer: asyncio.StreamWriter | None = None
+        self.p2p_fallback: asyncio.TimerHandle | None = None
+
+    def wifi_direct_names(self, r: Receiver) -> bool:
+        """Does this receiver's name also go out over Wi-Fi Direct (the first one does)?"""
+        return self.cfg.wifi_direct and bool(self.receivers) and r is self.receivers[0]
 
     async def start(self) -> None:
         outs = self.outputs if self.cfg.layout == "per_screen" else self.outputs[:1]
@@ -143,6 +149,8 @@ class Hub:
                 await self.mdns.publish(r.name, r.mice_port)
             except Exception as e:  # Avahi down: casting by Wi-Fi discovery + host name still works
                 log.warning("mdns: %s", e)
+            if not self.wifi_direct_names(r):
+                await r.show_name()          # findable now; the first waits for Wi-Fi Direct
         self.ui_task = asyncio.create_task(self.ui.keep_in_sync())
         if self.cfg.wifi_direct and self.receivers:
             # Keep a reference: asyncio holds tasks weakly, and an unreferenced one was collected.
@@ -155,6 +163,9 @@ class Hub:
             try:
                 r, w = await asyncio.open_unix_connection(str(P2P_SOCK))
             except OSError:
+                if not first.name_ready:     # no Wi-Fi Direct daemon: mDNS alone finds us
+                    log.warning("casthub-p2p not reachable; showing the name without Wi-Fi Direct")
+                    await first.show_name()
                 await asyncio.sleep(10)
                 continue
             self.p2p_writer = w
@@ -162,7 +173,12 @@ class Hub:
             while line := await r.readline():
                 with contextlib.suppress(ValueError, KeyError):
                     ev = json.loads(line)
-                    if ev["event"] == "source":
+                    if ev["event"] == "advertised":
+                        if ev.get("name") == first.name and not first.name_ready:
+                            if self.p2p_fallback:
+                                self.p2p_fallback.cancel()
+                            await first.show_name()
+                    elif ev["event"] == "source":
                         await first.on_p2p_source(ev["addr"], int(ev["rtsp_port"]), ev.get("name", ""))
                     elif ev["event"] == "gone":
                         first.on_p2p_gone(ev["addr"])
@@ -177,7 +193,8 @@ class Hub:
         """After a cast: a new name (and mDNS ID), so Windows lists a fresh display."""
         i = self.receivers.index(r)
         new = self.name_for(i, r.output)
-        if new == r.name:
+        if new == r.name:                    # pinned in casthub.toml
+            await r.show_name()
             return
         log.info("%s is now %s", r.name, new)
         r.name = new
@@ -185,8 +202,9 @@ class Hub:
             await self.mdns.publish(new, r.mice_port)
         except Exception as e:  # noqa: BLE001 (Avahi down: Wi-Fi discovery still works)
             log.warning("mdns: %s", e)
-        if i == 0:
-            await self.p2p_advertise(new_address=self.wants_new_address(r))
+        if self.wifi_direct_names(r) and await self.p2p_advertise(new_address=self.wants_new_address(r)):
+            return                           # shown when casthub-p2p says "advertised"
+        await r.show_name()
 
     def wants_new_address(self, first: Receiver) -> bool:
         """A new Wi-Fi Direct address with each new name (D26). It drops Wi-Fi for a few
@@ -195,15 +213,29 @@ class Hub:
             return False
         return all(o.state == "idle" for o in self.receivers if o is not first)
 
-    async def p2p_advertise(self, new_address: bool = False) -> None:
+    async def p2p_advertise(self, new_address: bool = False) -> bool:
+        """Ask casthub-p2p to advertise the first receiver's name; False if it isn't connected.
+        It answers {"event": "advertised"} (p2p_link shows the name then); if that never
+        comes, the name is shown anyway after P2P_CONFIRM_S."""
         w = self.p2p_writer
         if w is None or w.is_closing() or not self.receivers:
-            return
+            return False
         first = self.receivers[0]
         msg = {"cmd": "advertise", "name": first.name, "port": first.mice_port, "new_address": new_address}
         w.write(json.dumps(msg).encode() + b"\n")
-        with contextlib.suppress(ConnectionError):
+        try:
             await w.drain()
+        except ConnectionError:
+            return False
+        if self.p2p_fallback:
+            self.p2p_fallback.cancel()
+
+        def show_anyway() -> None:
+            if not first.name_ready:
+                log.warning("casthub-p2p did not confirm %s within %d s; showing it", first.name, P2P_CONFIRM_S)
+                asyncio.ensure_future(first.show_name())
+        self.p2p_fallback = asyncio.get_running_loop().call_later(P2P_CONFIRM_S, show_anyway)
+        return True
 
     async def end_all(self) -> None:
         """End every cast (SIGUSR1: casthub-leave, so the leave page isn't under a video)."""

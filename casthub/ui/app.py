@@ -6,7 +6,8 @@ Runs as the `casthub` user inside the Display Sway session (modes/display/sway.c
 
 Control socket ($XDG_RUNTIME_DIR/casthub-ui.sock, JSON lines; only this user can reach it):
     {"cmd": "leave"}                                      open the leave page (Ctrl+Alt+Esc; panel: close)
-    {"cmd": "state", "output": "eDP-1", "state": "connecting", "device": "<name>"}
+    {"cmd": "state", "output": "eDP-1", "state": "connecting", "device": "<name>", "name": "CAST-XXXXX"}
+                name: the receiver name, "" while it is not findable yet (the screen says Loading)
     {"cmd": "busy", "output": "eDP-1", "text": "<message>"}  (empty text hides it)
     {"cmd": "pin", "output": "eDP-1", "pin": "12345670"}     (Wi-Fi Direct pairing; empty hides it)
 The receiver hub (M3/M6) drives state and busy; casthub-leave sends "leave".
@@ -74,7 +75,6 @@ class DisplayUI(QObject):
 
     # ---- screens --------------------------------------------------------------
     def add_screen(self, screen: QScreen) -> None:
-        index = len(self.views)
         v = QQuickView()
         v.engine().addImageProvider("qr", QrProvider())
         v.setResizeMode(QQuickView.ResizeMode.SizeRootObjectToView)
@@ -87,8 +87,9 @@ class DisplayUI(QObject):
         if root is None:
             return
         props = {
-            # The hub's name for this screen if it told us (it changes after every cast).
-            "receiverName": self.names.get(screen.name()) or self.cfg.receiver_name(index, screen.name()),
+            # Only the hub's name for this screen, once it is findable (it changes after every
+            # cast); until then "" and the screen says Loading.
+            "receiverName": self.names.get(screen.name(), ""),
             "location": self.cfg.location,
             "coordinates": self.cfg.coordinates(),
             "airplay": self.cfg.airplay,
@@ -176,7 +177,7 @@ class DisplayUI(QObject):
             else:
                 self.open_leave()
         elif cmd in ("state", "busy", "pin"):
-            if cmd == "state" and msg.get("name"):     # kept even before the screen's view exists
+            if cmd == "state" and "name" in msg:     # kept even before the screen's view exists
                 self.names[msg["output"]] = str(msg["name"])
             v = self.views.get(msg["output"])
             if v is None:
@@ -187,7 +188,7 @@ class DisplayUI(QObject):
                     raise ValueError(f"bad state {msg['state']!r}")
                 r.setProperty("screenState", msg["state"])
                 r.setProperty("deviceName", str(msg.get("device", "")))
-                if msg.get("name"):                  # the hub's current name (new after each cast)
+                if "name" in msg:                    # the hub's name; "" while a new one is being set up
                     r.setProperty("receiverName", str(msg["name"]))
             elif cmd == "pin":
                 pin = str(msg.get("pin", ""))

@@ -11,6 +11,7 @@ the hub over /run/casthub/p2p.sock (JSON lines, group `casthub`):
     hub → p2p   {"cmd": "advertise", "name": "<receiver name>", "port": 7250, "new_address": true}
                 new_address: give the radio a new random Wi-Fi Direct address first (no screen
                 is casting); see p2pd.P2PDaemon.new_address
+    p2p → hub   {"event": "advertised", "name": "<receiver name>"}   PCs can find it now
     p2p → hub   {"event": "source", "addr": "192.0.2.10", "rtsp_port": 7236, "name": "<peer>"}
     p2p → hub   {"event": "gone", "addr": "192.0.2.10"}
     p2p → hub   {"event": "pin", "pin": "12345670"}     show it until {"event": "pin", "pin": ""}

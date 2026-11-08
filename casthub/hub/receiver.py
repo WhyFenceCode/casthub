@@ -42,12 +42,24 @@ class Receiver:
         self.name, self.output, self.size = name, output, size
         self.size_now = size_now          # the output's size right now (a window can be resized)
         self.on_ended = on_ended          # after each cast: the hub gives the receiver a new name
+        # The name is shown only once PCs can find it (mDNS, Wi-Fi Direct): the hub calls
+        # show_name(). Until then the screen says Loading.
+        self.name_ready = False
+        self.device = ""
+        self.ended_task: asyncio.Task | None = None
         self.mice_port, self.rtp_port, self.busy_policy = mice_port, rtp_port, busy_policy
         self.notify, self.pipeline_factory = notify, pipeline_factory
         self.state = "idle"
         self.current: Source | None = None
         self.task: asyncio.Task | None = None
         self.listener = MiceListener(mice_port, self.on_mice)
+
+    async def _ended(self) -> None:
+        try:
+            await self.on_ended(self)
+        except Exception:
+            log.exception("%s: new name failed", self.name)
+            await self.show_name()
 
     async def start(self) -> None:
         await self.listener.start()
@@ -59,10 +71,22 @@ class Receiver:
         await self.end_current()
 
     async def set_state(self, state: str, device: str = "") -> None:
-        self.state = state
+        self.state, self.device = state, device
         log.info("%s: %s %s", self.name, state, device)
         await self.notify({"cmd": "state", "output": self.output, "state": "idle" if state == "busy" else state,
-                           "device": device, "name": self.name})
+                           "device": device, "name": self.name if self.name_ready else ""})
+
+    async def show_name(self, name: str | None = None) -> None:
+        """PCs can find the receiver under `name` (default: the current one): show it."""
+        if name:
+            self.name = name
+        self.name_ready = True
+        await self.set_state(self.state, self.device)
+
+    async def hide_name(self) -> None:
+        """A new name is being set up: the screen says Loading."""
+        self.name_ready = False
+        await self.set_state(self.state, self.device)
 
     async def show_busy(self, who: str) -> None:
         await self.notify({"cmd": "busy", "output": self.output,
@@ -185,6 +209,9 @@ class Receiver:
             if self.current is src:
                 self.current = None
             if self.on_ended:
-                with contextlib.suppress(Exception):
-                    await self.on_ended(self)
+                self.name_ready = False         # Loading, while the hub sets up a new name
             await self.set_state("idle")
+            if self.on_ended:
+                # Not awaited here: a new name can take seconds (Wi-Fi Direct address), and a
+                # PC may connect meanwhile.
+                self.ended_task = asyncio.create_task(self._ended())

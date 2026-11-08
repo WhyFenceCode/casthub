@@ -138,6 +138,7 @@ class P2PDaemon:
                 except Exception:
                     log.exception("new Wi-Fi Direct address failed")
             await self._advertise()
+        self.broadcast({"event": "advertised", "name": self.name})     # the hub shows the name now
 
     async def _advertise(self) -> None:
         await self.find_device()

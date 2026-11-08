@@ -77,7 +77,8 @@ class TestApp(unittest.TestCase):
         self.assertEqual(len(ui.views), len(qapp.screens()))
         out_name, view = next(iter(ui.views.items()))
         root = view.rootObject()
-        self.assertEqual(root.property("receiverName"), "Brand-1")
+        self.assertEqual(root.property("receiverName"), "")          # Loading until the hub names it
+        self.assertTrue(root.property("loading"))
 
         replies = []
 
@@ -86,7 +87,8 @@ class TestApp(unittest.TestCase):
             s.settimeout(5)
             s.connect(os.path.join(tmp, "casthub-ui.sock"))
             f = s.makefile("rwb")
-            for m in ({"cmd": "state", "output": out_name, "state": "connecting", "device": "Phone"},
+            for m in ({"cmd": "state", "output": out_name, "state": "connecting", "device": "Phone",
+                       "name": "CAST-ABCDE"},
                       {"cmd": "busy", "output": out_name, "text": "in use"}, {"cmd": "nope"}, {"cmd": "leave"},
                       {"cmd": "pin", "output": out_name, "pin": "12345670"}, {"cmd": "pin", "output": out_name, "pin": "x1"}):
                 f.write(json.dumps(m).encode() + b"\n")
@@ -106,6 +108,8 @@ class TestApp(unittest.TestCase):
         self.assertEqual(root.property("pinCode"), "12345670")
         self.assertEqual(root.property("screenState"), "connecting")
         self.assertEqual(root.property("deviceName"), "Phone")
+        self.assertEqual(root.property("receiverName"), "CAST-ABCDE")
+        self.assertIn('<font color="#7e76d0">.</font>', root.dotted("Connecting", False).lower())
         self.assertEqual(root.property("busyText"), "in use")
         self.assertTrue(root.property("leaveOpen"))
 

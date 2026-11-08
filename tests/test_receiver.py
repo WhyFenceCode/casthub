@@ -368,13 +368,15 @@ class TestRenameAfterCast(unittest.TestCase):
 
             async def on_ended(r):
                 renamed.append(r.name)
-                r.name = "CAST-NEW00"
+                await asyncio.sleep(0.05)               # setting up the new name takes a moment
+                await r.show_name("CAST-NEW00")
 
             src = FakeSource(keepalive=True, hold=True)
             rtsp_port = await src.start()
             rec = Receiver("CAST-OLD00", "OUT-1", (1920, 1080), 0, 1028, "reject", notify, FakePipeline,
                            on_ended=on_ended)
             await rec.start()
+            await rec.show_name()                          # the hub: findable now
             _r, w = await asyncio.open_connection("127.0.0.1", rec.mice_port)
             w.write(mp.source_ready("<pc-name>", rtsp_port, SOURCE_ID))
             for _ in range(100):
@@ -383,7 +385,7 @@ class TestRenameAfterCast(unittest.TestCase):
                 await asyncio.sleep(0.02)
             w.write(mp.stop_projection("<pc-name>", SOURCE_ID))
             for _ in range(150):
-                if renamed and rec.state == "idle":
+                if rec.name_ready and rec.name == "CAST-NEW00":
                     break
                 await asyncio.sleep(0.02)
             w.close()
@@ -392,9 +394,10 @@ class TestRenameAfterCast(unittest.TestCase):
 
         renamed, events = run(go())
         self.assertEqual(renamed, ["CAST-OLD00"])
-        idle = [e for e in events if e["cmd"] == "state" and e["state"] == "idle"]
-        self.assertEqual(idle[0]["name"], "CAST-OLD00")
-        self.assertEqual(idle[-1]["name"], "CAST-NEW00")           # the screen shows the new name
+        idle = [e["name"] for e in events if e["cmd"] == "state" and e["state"] == "idle"]
+        self.assertEqual(idle[0], "")                              # Loading until the hub says so
+        self.assertEqual(idle[1], "CAST-OLD00")
+        self.assertEqual(idle[-2:], ["", "CAST-NEW00"])            # Loading after the cast, then the new name
 
 
 class TestDiscovery(unittest.TestCase):
