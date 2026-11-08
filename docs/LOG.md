@@ -182,7 +182,7 @@ but has never carried a cast; it is M4B. 102 tests pass.
 - Known limits: no PIN pairing over Wi-Fi Direct (NetworkManager); multi-receiver placement
   and port 7251 are M4.
 
-## M4B: Miracast over the network (open), 2026-11-08
+## M4B: Miracast over the network (done), 2026-11-08
 
 Built in M3 but untested: mDNS `_display._tcp` on 7250, the MS-MICE listener, and the "supports
 infrastructure" bit in our Wi-Fi Direct probe responses that should make Windows connect over
@@ -197,3 +197,7 @@ since Wi-Fi Direct offers only one receiver per radio.
   (WPA2, required) were fine.
 - Fix: casthub-p2p puts the Wi-Fi interface's IPv4 address(es) in the MS-MICE attributes and
   advertises again when the address changes.
+- Acceptance (owner): a Windows 11 PC on the same Wi-Fi cast with Win + K; the hub logged
+  `via mice` (MS-MICE over the network, port 7250), 960x540p60 at a steady 60 fps. After the
+  cast: Loading, a new name and a new Wi-Fi Direct address. The video sink hung on stop again
+  ("did not stop; exiting anyway") and only its own process was affected, as designed.
