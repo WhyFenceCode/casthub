@@ -52,6 +52,17 @@ STAGES = [("net", "src", "src"), ("jitter", "jb", "src"), ("rtp-out", "depay", "
           ("shown", "vsink", "sink")]
 
 
+def _to_screen(spec: MediaSpec) -> str:
+    """Between decoder and waylandsink: convert and copy each frame into ordinary memory.
+    With Windows the decoder took 2 frames and then stopped: waylandsink (fullscreen, so Sway
+    may scan the buffer out directly) kept the decoder's few GPU surfaces, and the decoder had
+    none left for the next frame. waylandsink then works from its own buffers."""
+    if spec.video_sink != "waylandsink":
+        return ""
+    convert = "vapostproc" if spec.decoder.startswith("va") else "videoconvert"
+    return f" ! {convert} ! video/x-raw,format=BGRx"
+
+
 def describe(spec: MediaSpec) -> str:
     """gst-launch description of the pipeline (also what the hub logs)."""
     caps = "application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T"
@@ -68,7 +79,7 @@ def describe(spec: MediaSpec) -> str:
         f"rtpjitterbuffer name=jb latency={spec.latency_ms}",
         "rtpmp2tdepay name=depay", "tsdemux name=demux latency=0",
         "demux. ! video/x-h264 ! queue name=vq max-size-time=0 max-size-bytes=0 max-size-buffers=64 ! h264parse name=vparse"
-        f" ! {spec.decoder} ! {sink} name=vsink",
+        f" ! {spec.decoder}{_to_screen(spec)} ! {sink} name=vsink",
     ]
     desc = " ! ".join(parts[:4]) + " " + parts[4]
     if spec.audio:
