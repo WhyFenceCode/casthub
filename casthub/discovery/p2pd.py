@@ -64,11 +64,13 @@ SUPPLICANT_CONF = Path("/run/NetworkManager/casthub-p2p-supplicant.conf")
 REJOIN_S = 30                   # wait this long for NetworkManager to reconnect Wi-Fi
 
 
-def wifi_interface(preferred: str) -> str:
-    if (Path("/sys/class/net") / preferred / "wireless").exists():
+def wifi_interface(preferred: str, net: Path = Path("/sys/class/net")) -> str:
+    """Our Wi-Fi (station) interface: the configured one, else the first wireless interface that
+    is neither a Wi-Fi Direct group (p2p-*) nor our own hotspot (casthub-ap sorts first)."""
+    if preferred not in ("", hotspot.AP_IF) and (net / preferred / "wireless").exists():
         return preferred
-    for d in sorted(Path("/sys/class/net").iterdir()):
-        if (d / "wireless").exists() and not d.name.startswith("p2p-"):
+    for d in sorted(net.iterdir()):
+        if (d / "wireless").exists() and not d.name.startswith("p2p-") and d.name != hotspot.AP_IF:
             return d.name
     raise RuntimeError("no Wi-Fi interface")
 

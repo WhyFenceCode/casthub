@@ -260,6 +260,19 @@ class TestHotspot(unittest.TestCase):
         self.assertEqual(d.nm[-1][:3], ("device", "connect", "wlan0"))   # Wi-Fi given back
 
 
+class TestWifiInterface(unittest.TestCase):
+    def test_never_our_hotspot_or_a_group(self):
+        from casthub.discovery.p2pd import wifi_interface
+        net = Path(tempfile.mkdtemp())
+        for name in ("casthub-ap", "p2p-wlan0-0", "wlan0", "lo"):
+            (net / name).mkdir()
+            if name != "lo":
+                (net / name / "wireless").mkdir()
+        self.assertEqual(wifi_interface("wlan9", net), "wlan0")          # configured one missing
+        self.assertEqual(wifi_interface("casthub-ap", net), "wlan0")
+        self.assertEqual(wifi_interface("wlan0", net), "wlan0")
+
+
 class TestConfig(unittest.TestCase):
     def test_modes(self):
         self.assertEqual(config.parse({}).hotspot_mode, "always")
