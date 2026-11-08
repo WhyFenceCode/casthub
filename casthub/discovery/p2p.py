@@ -12,6 +12,7 @@ the hub over /run/casthub/p2p.sock (JSON lines, group `casthub`):
     p2p → hub   {"event": "source", "addr": "192.0.2.10", "rtsp_port": 7236, "name": "<peer>"}
     p2p → hub   {"event": "gone", "addr": "192.0.2.10"}
     p2p → hub   {"event": "pin", "pin": "12345670"}     show it until {"event": "pin", "pin": ""}
+                (not sent while Wi-Fi Direct pairs by push-button; see p2pd)
 """
 
 from __future__ import annotations
@@ -113,11 +114,44 @@ def parse_wfd_rtsp_port(ies: bytes) -> int | None:
     return None
 
 
-def dhcp_range(address: str) -> tuple[str, str, str, str]:
-    """`<ip>/<prefix>` of our GO interface → (our ip, first lease, last lease, netmask)."""
-    import ipaddress
-    iface = ipaddress.ip_interface(address)
-    if iface.version != 4 or iface.network.prefixlen > 29:
-        raise ValueError(f"p2p_address needs an IPv4 /29 or larger: {address!r}")
-    hosts = [h for h in iface.network.hosts() if h != iface.ip]
-    return str(iface.ip), str(hosts[0]), str(hosts[-1]), str(iface.network.netmask)
+# ---- NetworkManager runs the group (pure, unit-tested) ---------------------------------------
+# NetworkManager drops any P2P group it did not start itself (it wraps the new interface,
+# ignores it and asks wpa_supplicant to remove it). So the daemon asks NM to connect to the
+# peer; NM 1.58 can only do that with push-button pairing.
+NM_PROFILE = "casthub-wifi-direct"
+PUSH_BUTTON_ONLY = "virtual_push_button"      # WPS config methods: Windows then pairs without a PIN
+
+
+def mac(addr: bytes) -> str:
+    return ":".join(f"{b:02x}" for b in addr)
+
+
+def nm_profile_args(peer_mac: str, wfd_ies: bytes, zone: str) -> list[str]:
+    """`nmcli` arguments for an in-memory wifi-p2p profile to one peer. As GO, NM shares
+    (DHCP from its own dnsmasq); as client, it takes a lease from the PC."""
+    return ["connection", "add", "type", "wifi-p2p", "con-name", NM_PROFILE, "save", "no",
+            "connection.autoconnect", "no", "connection.zone", zone,
+            "wifi-p2p.peer", peer_mac, "wifi-p2p.wfd-ies", "0x" + wfd_ies.hex(),
+            "ipv4.method", "auto", "ipv6.method", "disabled"]
+
+
+def peer_from_nm(show: str) -> str | None:
+    """The PC's address from `nmcli -t device show` of the P2P device when we are the client:
+    the DHCP server (the PC is GO), else the gateway."""
+    gateway = server = None
+    for line in show.splitlines():
+        key, _, val = line.partition(":")
+        if key == "IP4.GATEWAY" and val and val != "--":
+            gateway = val
+        elif key.startswith("DHCP4.OPTION") and val.replace(" ", "").startswith("dhcp_server_identifier="):
+            server = val.split("=", 1)[1].strip()
+    return server or gateway
+
+
+def peer_from_leases(text: str) -> tuple[str, str] | None:
+    """(address, host name) of the first client in NM's dnsmasq lease file (we are GO)."""
+    for line in text.splitlines():
+        f = line.split()
+        if len(f) >= 3:
+            return f[2], f[3] if len(f) > 3 and f[3] != "*" else ""
+    return None

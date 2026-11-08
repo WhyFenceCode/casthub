@@ -32,7 +32,7 @@ class Config:
     miracast_base_port: int = 7250
     miracast_interface: str = "wlan0"
     wifi_direct: bool = True
-    p2p_address: str = ""               # our address on a Wi-Fi Direct group, "<ip>/<prefix>"; "" = no Wi-Fi Direct casts
+    p2p_address: str = ""               # unused since NetworkManager addresses Wi-Fi Direct groups; still validated
     rtp_base_port: int = 1028           # receiver n receives RTP on rtp_base_port + 2n
     busy_policy: str = "reject"
     airplay: bool = True

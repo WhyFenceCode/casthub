@@ -4,11 +4,12 @@
 
 - Advertises the receiver: P2P device name, WFD IEs (primary sink, available) and the MS-MICE
   vendor extension in Probe Responses, then stays in extended listen so Win + K sees us.
-- Accepts Wi-Fi Direct groups with push-button (no PIN, SPEC v1 scope). We ask to be group
-  owner; on our GO interface we set `miracast.p2p_address` and serve DHCP with dnsmasq.
-- When the PC has a lease, tells the hub where its RTSP server is.
+- Accepts Wi-Fi Direct casts with push-button pairing. NetworkManager forms the group: it
+  removes any group it did not start itself, so we hand it an in-memory wifi-p2p profile for
+  the PC and it does the pairing, the addresses and DHCP. (NM 1.58 has no PIN pairing.)
+- When the PC's address is known, tells the hub where its RTSP server is.
 
-NetworkManager keeps managing the Wi-Fi interface; we only use its P2P device in wpa_supplicant.
+NetworkManager keeps managing the Wi-Fi interface; we set the advertised IEs in wpa_supplicant.
 """
 
 from __future__ import annotations
@@ -21,7 +22,6 @@ import json
 import logging
 import os
 import socket
-import subprocess
 from pathlib import Path
 
 from dbus_fast import BusType, Message, MessageType, Variant
@@ -35,10 +35,11 @@ WPAS = "fi.w1.wpa_supplicant1"
 IFACE = f"{WPAS}.Interface"
 P2PDEV = f"{IFACE}.P2PDevice"
 PEER = f"{WPAS}.Peer"
+WPS = f"{IFACE}.WPS"
 PROPS = "org.freedesktop.DBus.Properties"
 RUN = Path("/run/casthub")
 SOCK = RUN / "p2p.sock"
-LEASES = RUN / "p2p-leases"
+NM_LEASES = Path("/var/lib/NetworkManager")    # dnsmasq-<group if>.leases when we are GO
 ZONE = "casthub-p2p"            # firewalld zone (system/firewalld/casthub-p2p.xml): DHCP + RTP
 
 
@@ -60,11 +61,10 @@ class P2PDaemon:
         self.port = cfg.miracast_base_port
         self.clients: set[asyncio.StreamWriter] = set()
         self.group_if = ""
-        self.dnsmasq: subprocess.Popen | None = None
+        self.connecting = False            # NM is pairing with a PC (one at a time)
+        self.saved_methods: str | None = None   # WPS config methods before we advertised
         self.peers: dict[str, int] = {}    # peer path → RTSP port from its WFD IE
         self.announced: set[str] = set()
-        self.pin = ""
-        self.pin_timer: asyncio.TimerHandle | None = None
         self.advertising = False
         self.advertised_dev = ""
         self.probes = 0
@@ -119,6 +119,11 @@ class P2PDaemon:
                 "VendorExtension": Variant("aay", [p2p.mice_vendor_payload(host)])}
         await self.set(self.dev, P2PDEV, "P2PDeviceConfig", "a{sv}", conf)
         await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements())
+        # Offer push-button only, so Windows pairs the way NetworkManager can (no PIN).
+        if self.saved_methods is None:
+            with contextlib.suppress(RuntimeError):
+                self.saved_methods = str(await self.get(self.dev, WPS, "ConfigMethods"))
+        await self.set(self.dev, WPS, "ConfigMethods", "s", p2p.PUSH_BUTTON_ONLY)
         # Remove the separate IE an earlier version added (harmless if absent).
         old_ie = p2p.wsc_ie(p2p.mice_vendor_extension(host))
         for frame in (p2p.VENDOR_ELEM_PROBE_RESP_P2P, p2p.VENDOR_ELEM_PROBE_RESP_P2P_GO, p2p.VENDOR_ELEM_BEACON_P2P_GO):
@@ -177,6 +182,11 @@ class P2PDaemon:
             await self.set(self.dev, P2PDEV, "P2PDeviceConfig", "a{sv}", conf)
         with contextlib.suppress(RuntimeError):     # sink, session *not* available
             await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements(available=False))
+        await self.nmcli("connection", "delete", p2p.NM_PROFILE)     # ends a Wi-Fi Direct cast, if any
+        if self.saved_methods is not None:
+            with contextlib.suppress(RuntimeError):
+                await self.set(self.dev, WPS, "ConfigMethods", "s", self.saved_methods)
+            self.saved_methods = None
         self.advertising = False
         log.info("not advertising (no Display mode hub connected)")
 
@@ -212,103 +222,108 @@ class P2PDaemon:
             log.exception("p2p handler failed")
 
     async def on_pbc_request(self, peer: str, *_):
-        log.info("push-button request")
+        await self.pair(peer)
 
     async def on_pd_display_pin(self, peer: str, pin: str, *_):
-        """The PC will ask its user for a PIN: show this one on the screen."""
-        self.show_pin(pin)
+        log.warning("the PC asked for PIN pairing; Cast Hub only offers push-button (NetworkManager 1.58)")
 
     async def on_pd_enter_pin(self, peer: str, *_):
-        log.warning("the PC shows a PIN and wants it typed here; Cast Hub has no keypad (use its PIN prompt instead)")
+        log.warning("the PC shows a PIN; Cast Hub only offers push-button")
 
     async def on_go_failure(self, *_):
         log.warning("Wi-Fi Direct group negotiation failed")
-        self.show_pin("")
-
-    def show_pin(self, pin: str) -> None:
-        self.pin = pin
-        self.broadcast({"event": "pin", "pin": pin})
-        if self.pin_timer:
-            self.pin_timer.cancel()
-            self.pin_timer = None
-        if pin:   # a pairing that never completes must not leave the PIN up
-            self.pin_timer = asyncio.get_running_loop().call_later(120, lambda: self.pin == pin and self.show_pin(""))
 
     async def on_go_request(self, peer: str, *args):
-        if not self.cfg.p2p_address:
-            log.warning("Wi-Fi Direct cast refused: set miracast.p2p_address in casthub.toml")
-            self.show_pin("")
-            return
-        with contextlib.suppress(RuntimeError):
-            ies = await self.get(peer, PEER, "IEs")
-            port = p2p.parse_wfd_rtsp_port(bytes(ies))
-            if port:
-                self.peers[peer] = port
         dev_pw = args[0] if args else p2p.DEV_PW_PUSHBUTTON
-        opts = {"peer": Variant("o", peer), "go_intent": Variant("i", 15), "persistent": Variant("b", False)}
-        if dev_pw == p2p.DEV_PW_PUSHBUTTON:
-            opts["wps_method"] = Variant("s", "pbc")
-        elif dev_pw == p2p.DEV_PW_REGISTRAR_SPECIFIED:
-            log.warning("the PC displays a PIN; Cast Hub can only show one")
-            self.show_pin("")
+        if dev_pw != p2p.DEV_PW_PUSHBUTTON:
+            log.warning("the PC wants PIN pairing (password id %s); only push-button works here", dev_pw)
             return
-        else:                       # the PC's user types a PIN: we display it
-            if not self.pin:
-                self.show_pin(p2p.wps_pin())
-            opts["wps_method"] = Variant("s", "display")
-            opts["pin"] = Variant("s", self.pin)
-        await self.call(self.dev, P2PDEV, "Connect", "a{sv}", [opts])
+        await self.pair(peer)
+
+    async def nmcli(self, *args: str, timeout: float = 10) -> tuple[int, str]:
+        proc = await asyncio.create_subprocess_exec("nmcli", *args, stdout=asyncio.subprocess.PIPE,
+                                                    stderr=asyncio.subprocess.STDOUT)
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout)
+        except TimeoutError:
+            proc.kill()
+            return 124, "timed out"
+        return proc.returncode or 0, out.decode(errors="replace")
+
+    async def pair(self, peer: str) -> None:
+        """Have NetworkManager connect to this PC (push-button). NM ends up GO or client;
+        on_group_started then finds the PC's address."""
+        if not self.advertising or self.connecting:
+            return
+        self.connecting = True
+        try:
+            with contextlib.suppress(RuntimeError):
+                port = p2p.parse_wfd_rtsp_port(bytes(await self.get(peer, PEER, "IEs")))
+                if port:
+                    self.peers[peer] = port
+            addr = p2p.mac(bytes(await self.get(peer, PEER, "DeviceAddress")))
+            await self.nmcli("connection", "delete", p2p.NM_PROFILE)
+            rc, out = await self.nmcli(*p2p.nm_profile_args(addr, p2p.wfd_subelements(), ZONE))
+            if rc:
+                log.warning("could not add the Wi-Fi Direct profile: %s", out.strip()[:200])
+                return
+            log.info("pairing with the PC through NetworkManager (push-button)")
+            rc, out = await self.nmcli("--wait", "60", "connection", "up", p2p.NM_PROFILE, timeout=70)
+            if rc:
+                log.warning("Wi-Fi Direct connection failed: %s", out.strip()[:200])
+                await self.end_session()
+        finally:
+            self.connecting = False
 
     async def on_group_started(self, props: dict):
         role = props.get("role", Variant("s", "")).value
         ifpath = props["interface_object"].value
         self.group_if = await self.get(ifpath, IFACE, "Ifname")
         log.info("group started, role %s", role)
-        self.show_pin("")
-        if role != "GO":
-            log.warning("we are not group owner; Wi-Fi Direct needs us as GO (no DHCP client here)")
-            return
-        ours, first, last, mask = p2p.dhcp_range(self.cfg.p2p_address)
-        prefix = self.cfg.p2p_address.split("/")[1]
-        subprocess.run(["ip", "addr", "replace", f"{ours}/{prefix}", "dev", self.group_if], check=True)
-        subprocess.run(["ip", "link", "set", self.group_if, "up"], check=True)
-        subprocess.run(["firewall-cmd", f"--zone={ZONE}", f"--change-interface={self.group_if}"],
-                       check=False, capture_output=True)
-        LEASES.unlink(missing_ok=True)
-        self.dnsmasq = subprocess.Popen(
-            ["dnsmasq", "--keep-in-foreground", "--user=root", "--conf-file=/dev/null", "--port=0", "--bind-interfaces",
-             f"--interface={self.group_if}", "--except-interface=lo",
-             f"--dhcp-range={first},{last},{mask},1h", f"--dhcp-leasefile={LEASES}",
-             "--dhcp-option=3", "--dhcp-option=6", f"--pid-file={RUN / 'p2p-dnsmasq.pid'}"])
-        asyncio.ensure_future(self._guard(self.wait_for_lease()))
+        asyncio.ensure_future(self._guard(self.find_peer(role)))
 
-    async def wait_for_lease(self) -> None:
+    async def nm_p2p_device(self) -> str:
+        rc, out = await self.nmcli("-t", "-f", "DEVICE,TYPE", "device")
+        for line in out.splitlines():
+            dev, _, typ = line.rpartition(":")
+            if typ == "wifi-p2p":
+                return dev.replace("\\:", ":")
+        return ""
+
+    async def find_peer(self, role: str) -> None:
+        """Wait for NM to finish addressing, then announce the PC to the hub."""
         port = next(iter(self.peers.values()), 7236)
+        nmdev = await self.nm_p2p_device()
         for _ in range(60):
             await asyncio.sleep(0.5)
-            try:
-                lines = LEASES.read_text().split("\n")
-            except OSError:
-                continue
-            for line in lines:
-                f = line.split()
-                if len(f) >= 3 and f[2] not in self.announced:
-                    self.announced.add(f[2])
-                    self.broadcast({"event": "source", "addr": f[2], "rtsp_port": port, "name": f[3] if len(f) > 3 else ""})
-                    return
-        log.warning("Wi-Fi Direct peer never took a DHCP lease")
+            found: tuple[str, str] | None = None
+            if role == "GO":
+                with contextlib.suppress(OSError):
+                    found = p2p.peer_from_leases((NM_LEASES / f"dnsmasq-{self.group_if}.leases").read_text())
+            elif nmdev:
+                _, out = await self.nmcli("-t", "-f", "IP4,DHCP4", "device", "show", nmdev)
+                addr = p2p.peer_from_nm(out)
+                found = (addr, "") if addr else None
+            if found and found[0] not in self.announced:
+                self.announced.add(found[0])
+                log.info("PC reachable over Wi-Fi Direct; telling the hub")
+                self.broadcast({"event": "source", "addr": found[0], "rtsp_port": port, "name": found[1]})
+                return
+        log.warning("Wi-Fi Direct is up but the PC's address never appeared")
 
     async def on_group_finished(self, props: dict):
         log.info("group finished")
+        await self.end_session()
+
+    async def end_session(self) -> None:
         for addr in self.announced:
             self.broadcast({"event": "gone", "addr": addr})
         self.announced.clear()
         self.peers.clear()
-        if self.dnsmasq:
-            self.dnsmasq.terminate()
-            self.dnsmasq = None
-        if self.advertising:
-            await self.listen()
+        await self.nmcli("connection", "delete", p2p.NM_PROFILE)
+        if self.advertising:          # NM clears the WFD IEs when its P2P connection ends
+            with contextlib.suppress(RuntimeError):
+                await self.advertise()
 
     # ---- hub socket ----------------------------------------------------------------------
     def broadcast(self, event: dict) -> None:
@@ -335,8 +350,6 @@ class P2PDaemon:
             writer.close()
             return
         self.clients.add(writer)
-        if self.pin:
-            self.broadcast({"event": "pin", "pin": self.pin})
         try:
             while line := await reader.readline():
                 try:

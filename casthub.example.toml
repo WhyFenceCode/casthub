@@ -16,7 +16,7 @@ busy_policy = "reject"           # reject | replace
 rtp_base_port = 1028             # receiver n gets its stream on rtp_base_port + 2n
 # Wi-Fi Direct casts: our address on the P2P link; Cast Hub hands out the rest by DHCP.
 # Pick a private /24 that no network you join uses. Empty = Wi-Fi Direct casts are refused.
-p2p_address = ""                 # "<ip>/24"
+p2p_address = ""                 # unused (NetworkManager addresses Wi-Fi Direct groups)
 
 [airplay]
 enabled = true

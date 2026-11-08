@@ -173,7 +173,10 @@ Two transports, one receiver:
 - **Miracast over Infrastructure (MS-MICE):** PC and Chromebook on the same network
   (Windows 10 v1809+). Discovery still needs Wi-Fi on the PC.
 - **Wi-Fi Direct:** fallback when the PC isn't on the same network; also used for discovery,
-  so the radio must support P2P.
+  so the radio must support P2P. Push-button pairing (owner, Nov 7): NetworkManager 1.58 removes
+  any P2P group it did not start, and it can only start them with push-button, so NM forms the
+  group from a profile `casthub-p2p` hands it. A PIN shown on the Display screen comes back once
+  Fedora's NM supports PIN pairing (or with network-path PIN + DTLS).
 
 Connection sequence, per receiver:
 
@@ -222,7 +225,7 @@ screens.
 | OS | Fedora KDE Plasma (current stable), RPM Fusion codecs, intel-media-driver |
 | Language | Python 3.12+, asyncio throughout, type hints, ruff + pytest |
 | Media | GStreamer via PyGObject: `udpsrc ! rtpmp2tdepay ! tsdemux ! h264parse ! vah264dec ! waylandsink`, audio `aacparse ! avdec_aac ! pipewiresink` |
-| Wi-Fi Direct | wpa_supplicant P2P over D-Bus (`dbus-fast`) |
+| Wi-Fi Direct | wpa_supplicant P2P over D-Bus (`dbus-fast`) for discovery; NetworkManager (`nmcli`) forms the group |
 | mDNS | Avahi over D-Bus |
 | Kiosk | Sway, controlled over its IPC socket (`i3ipc`) |
 | AirPlay | UxPlay, one subprocess per screen |
