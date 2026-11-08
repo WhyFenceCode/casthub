@@ -64,6 +64,7 @@ class P2PDaemon:
         self.peers: dict[str, int] = {}    # peer path → RTSP port from its WFD IE
         self.announced: set[str] = set()
         self.pin = ""
+        self.pin_timer: asyncio.TimerHandle | None = None
         self.advertising = False
         self.advertised_dev = ""
         self.probes = 0
@@ -227,10 +228,16 @@ class P2PDaemon:
     def show_pin(self, pin: str) -> None:
         self.pin = pin
         self.broadcast({"event": "pin", "pin": pin})
+        if self.pin_timer:
+            self.pin_timer.cancel()
+            self.pin_timer = None
+        if pin:   # a pairing that never completes must not leave the PIN up
+            self.pin_timer = asyncio.get_running_loop().call_later(120, lambda: self.pin == pin and self.show_pin(""))
 
     async def on_go_request(self, peer: str, *args):
         if not self.cfg.p2p_address:
             log.warning("Wi-Fi Direct cast refused: set miracast.p2p_address in casthub.toml")
+            self.show_pin("")
             return
         with contextlib.suppress(RuntimeError):
             ies = await self.get(peer, PEER, "IEs")
@@ -243,6 +250,7 @@ class P2PDaemon:
             opts["wps_method"] = Variant("s", "pbc")
         elif dev_pw == p2p.DEV_PW_REGISTRAR_SPECIFIED:
             log.warning("the PC displays a PIN; Cast Hub can only show one")
+            self.show_pin("")
             return
         else:                       # the PC's user types a PIN: we display it
             if not self.pin:
@@ -268,7 +276,7 @@ class P2PDaemon:
                        check=False, capture_output=True)
         LEASES.unlink(missing_ok=True)
         self.dnsmasq = subprocess.Popen(
-            ["dnsmasq", "--keep-in-foreground", "--conf-file=/dev/null", "--port=0", "--bind-interfaces",
+            ["dnsmasq", "--keep-in-foreground", "--user=root", "--conf-file=/dev/null", "--port=0", "--bind-interfaces",
              f"--interface={self.group_if}", "--except-interface=lo",
              f"--dhcp-range={first},{last},{mask},1h", f"--dhcp-leasefile={LEASES}",
              "--dhcp-option=3", "--dhcp-option=6", f"--pid-file={RUN / 'p2p-dnsmasq.pid'}"])
