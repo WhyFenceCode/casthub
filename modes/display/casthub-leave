@@ -1,9 +1,11 @@
 #!/bin/bash
 # Ctrl+Alt+Esc in Display mode (bound in modes/display/sway.conf).
 # Asks the Display UI to open the leave page (SPEC D7: return to login / restart / shut
-# down, no PIN). With --now (the UI calls this), or if the UI isn't running, it leaves
+# down, no PIN), after ending any cast. With --now (the UI calls this), or if the UI isn't running, it leaves
 # straight away: back to the login screen.
 if [ "${1:-}" != --now ]; then
+  # End any cast first: the video window is fullscreen and would hide the leave page.
+  systemctl --user kill --signal=USR1 casthub-hub.service 2>/dev/null
   sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/casthub-ui.sock"
   if python3 -I - "$sock" <<'PY'
 import socket, sys

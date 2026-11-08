@@ -154,10 +154,10 @@ class Receiver:
         except Exception:
             log.exception("%s: stream failed", self.name)
         finally:
+            if pipe:            # first, so the video window is gone at once (Ctrl+Alt+Esc)
+                pipe.stop()
             with contextlib.suppress(Exception):
                 await sink.teardown()
-            if pipe:
-                pipe.stop()
             if self.current is src:
                 self.current = None
             await self.set_state("idle")

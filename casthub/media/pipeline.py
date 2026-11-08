@@ -68,8 +68,11 @@ def describe(spec: MediaSpec) -> str:
     ]
     desc = " ! ".join(parts[:4]) + " " + parts[4]
     if spec.audio:
-        desc += (f" demux. ! audio/mpeg ! queue ! aacparse ! avdec_aac ! audioconvert ! audioresample"
-                 f" ! {spec.audio_sink} name=asink")
+        # tsdemux feeds audio and video from one thread: if audio backs up, video stops too
+        # (the picture froze after 2 frames). So audio never waits on the PC's timestamps, and
+        # its queue drops old audio rather than block the demuxer.
+        desc += (f" demux. ! audio/mpeg ! queue leaky=downstream max-size-time=500000000 ! aacparse ! avdec_aac"
+                 f" ! audioconvert ! audioresample ! {spec.audio_sink} name=asink sync=false")
     return desc
 
 
@@ -87,6 +90,7 @@ class Pipeline:
         self.pipe = None
         self._poll: asyncio.Task | None = None
         self._seen_frame = False
+        self.packets = 0            # RTP packets from the network
         self.frames_in = 0          # H.264 frames out of the parser (counted on the streaming thread)
         self.frames_shown = 0       # decoded frames that reached the video sink
 
@@ -107,12 +111,17 @@ class Pipeline:
                 loop.call_soon_threadsafe(self.on_first_frame)
             return g.PadProbeReturn.OK
 
+        def received(_pad, _info):
+            self.packets += 1
+            return g.PadProbeReturn.OK
+
         def parsed(_pad, _info):
             self.frames_in += 1
             return g.PadProbeReturn.OK
 
         self.pipe.get_by_name("vsink").get_static_pad("sink").add_probe(g.PadProbeType.BUFFER, shown)
         self.pipe.get_by_name("vparse").get_static_pad("src").add_probe(g.PadProbeType.BUFFER, parsed)
+        self.pipe.get_by_name("src").get_static_pad("src").add_probe(g.PadProbeType.BUFFER, received)
         if self.pipe.set_state(g.State.PLAYING) == g.StateChangeReturn.FAILURE:
             why = "pipeline did not start"
             bus = self.pipe.get_bus()
@@ -133,11 +142,12 @@ class Pipeline:
         bus = self.pipe.get_bus()
         mask = g.MessageType.ERROR | g.MessageType.EOS | g.MessageType.WARNING
         loop = asyncio.get_running_loop()
-        next_stats, last = loop.time() + STATS_S, (0, 0)
+        next_stats, last = loop.time() + STATS_S, (0, 0, 0)
         while self.pipe is not None:
             if loop.time() >= next_stats:          # where frames stop, if the picture freezes
-                now = (self.frames_in, self.frames_shown)
-                log.info("video: %d frames in, %d shown in the last %d s", now[0] - last[0], now[1] - last[1], STATS_S)
+                now = (self.packets, self.frames_in, self.frames_shown)
+                log.info("video: %d packets, %d frames in, %d shown in the last %d s",
+                         *(a - b for a, b in zip(now, last, strict=True)), STATS_S)
                 next_stats, last = loop.time() + STATS_S, now
             msg = bus.pop_filtered(mask)
             if msg is None:

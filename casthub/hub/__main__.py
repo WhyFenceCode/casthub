@@ -120,6 +120,11 @@ class Hub:
                         await first.show_pin(str(ev["pin"]))
             await asyncio.sleep(2)
 
+    async def end_all(self) -> None:
+        """End every cast (SIGUSR1: casthub-leave, so the leave page isn't under a video)."""
+        log.info("ending all casts")
+        await asyncio.gather(*(r.end_current() for r in self.receivers), return_exceptions=True)
+
     async def stop(self) -> None:
         for r in self.receivers:
             await r.stop()
@@ -148,6 +153,7 @@ async def amain(a: argparse.Namespace) -> int:
     loop = asyncio.get_running_loop()
     for s in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(s, stop.set)
+    loop.add_signal_handler(signal.SIGUSR1, lambda: asyncio.ensure_future(hub.end_all()))
     async def sway_gone():
         sock = os.environ.get("SWAYSOCK")
         while sock and os.path.exists(sock):
