@@ -5,3 +5,8 @@
 var callbacks = [];
 function onCancel(cb) { callbacks.push(cb); }
 function cancelAll() { callbacks.forEach(function (c) { if (c) c(); }); }
+
+// Once a choice is made on one monitor, every monitor shows "Logging out…" too.
+var leavingCallbacks = [];
+function onLeaving(cb) { leavingCallbacks.push(cb); }
+function leaving(id) { leavingCallbacks.forEach(function (c) { if (c) c(id); }); }

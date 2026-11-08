@@ -263,3 +263,13 @@ class TestOneTopBar(unittest.TestCase):
         pts = json.loads((ROOT / "brand" / "flourish.json").read_text())["points"]
         xs = [p[0] for p in pts]
         self.assertEqual(xs, sorted(xs))           # no loop back at the end
+
+
+class TestLeavingStaysUp(unittest.TestCase):
+    def test_logout_screen_stays_until_session_ends(self):
+        # Plasma's logoutRequested path closes the screen first and the desktop flashed.
+        qml = (SHELL / "plasma-shell" / "org.casthub.desktop" / "contents" / "logout" / "Logout.qml").read_text()
+        for call in ("sessions.requestLogout(0)", "sessions.requestReboot(0)", "sessions.requestShutdown(0)"):
+            self.assertIn(call, qml)
+        self.assertIn('"Logging out…"', qml)
+        self.assertIn("id: stuck", qml)          # a blocked logout hands the screen back

@@ -81,19 +81,23 @@ class P2PDaemon:
         await self.call(path, PROPS, "Set", "ssv", [iface, prop, Variant(sig, value)])
 
     # ---- advertising ---------------------------------------------------------------
-    async def start(self) -> None:
-        self.bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+    async def find_device(self) -> None:
+        """Look up the P2P device's object path. It changes whenever NetworkManager re-adds the
+        Wi-Fi interface (e.g. after a reconnect), so this runs before every advertise."""
         wifi = wifi_interface(self.cfg.miracast_interface)
         # With NetworkManager, P2P runs on wpa_supplicant's hidden p2p-dev device, but D-Bus
         # exposes its P2PDevice API on the Wi-Fi interface's own object.
         for name in (f"p2p-dev-{wifi}", wifi):
             try:
                 (self.dev,) = await self.call("/fi/w1/wpa_supplicant1", WPAS, "GetInterface", "s", [name])
-                break
+                return
             except RuntimeError:
                 continue
-        else:
-            raise RuntimeError(f"wpa_supplicant does not manage {wifi}")
+        raise RuntimeError(f"wpa_supplicant does not manage {wifi}")
+
+    async def start(self) -> None:
+        self.bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+        await self.find_device()
         self.bus.add_message_handler(self.on_signal)
         await self.call("/org/freedesktop/DBus", "org.freedesktop.DBus", "AddMatch", "s",
                         [f"type='signal',sender='{WPAS}'"], dest="org.freedesktop.DBus")
@@ -102,6 +106,7 @@ class P2PDaemon:
         await self.unadvertise()
 
     async def advertise(self) -> None:
+        await self.find_device()
         host = socket.gethostname().split(".")[0]
         # The MS-MICE attributes go *inside* wpa_supplicant's own WSC IE (VendorExtension), not
         # in a second IE: Windows did not see them there and fell back to Wi-Fi Direct.
@@ -122,6 +127,8 @@ class P2PDaemon:
 
     async def unadvertise(self) -> None:
         """Stop answering P2P discovery and drop the Miracast IEs."""
+        with contextlib.suppress(RuntimeError):
+            await self.find_device()
         with contextlib.suppress(RuntimeError):
             await self.call(self.dev, P2PDEV, "ExtendedListen", "a{sv}", [{}])     # no period = off
         with contextlib.suppress(RuntimeError):

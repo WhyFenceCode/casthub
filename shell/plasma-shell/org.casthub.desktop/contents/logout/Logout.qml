@@ -7,6 +7,7 @@ import QtQuick.Controls as QQC2
 import QtQuick.Window
 import org.kde.kirigami as Kirigami
 import org.kde.coreaddons as KCoreAddons
+import org.kde.plasma.private.sessions
 import "uikit"
 import "timer.js" as Countdown
 
@@ -40,8 +41,21 @@ Rectangle {
         add("cancel", "Cancel", "Back to the desktop · Esc", true)
         return a
     }
+    // Log out / restart / shut down are asked of the session manager *here*, and this screen
+    // stays up ("Logging out…") until the session is gone. Answering with Plasma's signals
+    // closes the screen first, and the desktop showed for a moment before logging out.
+    SessionManagement { id: sessions }
+    property string leaving: ""
     function run(id) {
         Countdown.cancelAll()
+        if (!updates && (id === "logout" || id === "reboot" || id === "halt")) {
+            Countdown.leaving(id)
+            if (id === "logout") sessions.requestLogout(0)          // ConfirmationMode.Skip
+            else if (id === "reboot") sessions.requestReboot(0)
+            else sessions.requestShutdown(0)
+            stuck.start()
+            return
+        }
         switch (id) {
         case "logout": logoutRequested(); break
         case "reboot": updates ? rebootUpdateRequested() : rebootRequested(); break
@@ -52,6 +66,8 @@ Rectangle {
         }
     }
     property int selected: 0
+    // An app can stop the logout (unsaved work). Then close this screen so its question shows.
+    Timer { id: stuck; interval: 15000; onTriggered: root.cancelRequested() }
 
     // ---- countdown when one action was asked for (Plasma's behaviour) -----------
     property int remaining: 30
@@ -74,8 +90,13 @@ Rectangle {
     color: t.bg
 
     focus: true
-    Component.onCompleted: forceActiveFocus()
+    Component.onCompleted: {
+        forceActiveFocus()
+        Countdown.onLeaving(function (id) { root.leaving = id })
+    }
     Keys.onPressed: function (e) {
+        e.accepted = true
+        if (root.leaving) return                     // already on its way out
         Countdown.cancelAll()
         if (e.key === Qt.Key_Escape) root.cancelRequested()
         else if (e.key === Qt.Key_Down || e.key === Qt.Key_Tab) root.selected = (root.selected + 1) % root.actions.length
@@ -102,13 +123,16 @@ Rectangle {
         y: 345 * root.u - baselineOffset
         u: root.u; tok: t; textStyle: t.today
         font.pixelSize: 200 * root.u
-        text: root.asked === "reboot" && !root.all ? "Restart?" : root.asked === "halt" && !root.all ? "Shut down?" : "Leave?"
+        text: root.leaving === "logout" ? "Logging out…" : root.leaving === "reboot" ? "Restarting…"
+              : root.leaving === "halt" ? "Shutting down…"
+              : root.asked === "reboot" && !root.all ? "Restart?" : root.asked === "halt" && !root.all ? "Shut down?" : "Leave?"
     }
     Label {
         x: root.margin
         y: 405 * root.u - baselineOffset
         u: root.u; tok: t; textStyle: t.label; color: countdown.running ? t.fg : t.muted
-        text: countdown.running
+        text: root.leaving ? "Closing apps"
+              : countdown.running
               ? (root.asked === "reboot" ? "Restarting" : root.asked === "halt" ? "Shutting down" : "Logging out") + " in " + root.remaining + " s · any key stops this"
               : "↑↓ · Enter · Esc"
     }
@@ -125,6 +149,7 @@ Rectangle {
     // Choices: the same right-snapped grid as the Display screens.
     Grid {
         id: choices
+        visible: !root.leaving
         anchors.right: parent.right; anchors.rightMargin: root.margin
         y: 452 * root.u
         columns: 3
@@ -155,12 +180,12 @@ Rectangle {
     }
     Rectangle {
         readonly property Item first: cells.count > root.selected * 3 ? cells.itemAt(root.selected * 3) : null
-        visible: first !== null
+        visible: first !== null && !root.leaving
         x: choices.x - 12 * root.u
         y: first ? choices.y + first.y - 4 * root.u : 0
         width: 2 * root.hair; height: first ? first.height + 8 * root.u : 0
         color: t.accent
     }
 
-    QQC2.Action { shortcut: "Escape"; onTriggered: root.cancelRequested() }
+    QQC2.Action { shortcut: "Escape"; enabled: !root.leaving; onTriggered: root.cancelRequested() }
 }
