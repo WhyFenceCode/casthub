@@ -212,8 +212,8 @@ class Hotspot:
     async def start(self) -> None:
         """The hub is on screen: decide the route (once) and bring the hotspot up if it needs one."""
         async with self.lock:
-            if self.route:
-                return
+            if self.route:                     # decided already: tell this hub too
+                return self._decided(self.route, "")
             mode = self.cfg.hotspot_mode
             if mode == "off":
                 return self._decided(ROUTE_NETWORK, "hotspot off (casthub.toml)")

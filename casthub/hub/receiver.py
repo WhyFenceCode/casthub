@@ -60,6 +60,9 @@ class Receiver:
         # The name is shown only once PCs can find it (mDNS, Wi-Fi Direct): the hub calls
         # show_name(). Until then the screen says Loading.
         self.name_ready = False
+        # How senders reach us, from casthub-p2p (discovery/hotspot.py): network | hotspot |
+        # hotspot-alone; "" until decided. The screen shows instructions only once it's known.
+        self.route = ""
         self.device = ""
         self.ended_task: asyncio.Task | None = None
         self.mice_port, self.rtp_port, self.busy_policy = mice_port, rtp_port, busy_policy
@@ -137,8 +140,9 @@ class Receiver:
     async def set_state(self, state: str, device: str = "") -> None:
         self.state, self.device = state, device
         log.info("%s: %s %s", self.name, state, device)
+        ready = self.name_ready and bool(self.route)
         await self.tell({"cmd": "state", "state": "idle" if state == "busy" else state,
-                           "device": device, "name": self.name if self.name_ready else ""})
+                           "device": device, "name": self.name if ready else "", "route": self.route})
         if self.on_state:
             await self.on_state(self)
 
@@ -149,9 +153,17 @@ class Receiver:
         self.name_ready = True
         await self.set_state(self.state, self.device)
 
+    async def set_route(self, route: str) -> None:
+        if route != self.route:
+            self.route = route
+            await self.set_state(self.state, self.device)
+
     async def hide_name(self) -> None:
         """A new name is being set up: the screen says Loading."""
         self.name_ready = False
+        # How senders reach us, from casthub-p2p (discovery/hotspot.py): network | hotspot |
+        # hotspot-alone; "" until decided. The screen shows instructions only once it's known.
+        self.route = ""
         await self.set_state(self.state, self.device)
 
     async def show_busy(self, who: str) -> None:

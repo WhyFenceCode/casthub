@@ -27,6 +27,8 @@ from casthub.hub.receiver import Receiver
 
 log = logging.getLogger("casthub.hub")
 P2P_SOCK = Path("/run/casthub/p2p.sock")
+ROUTE_WAIT_S = 20            # after the name is confirmed: wait this long for the route (auto mode listens first)
+ROUTES = ("network", "hotspot", "hotspot-alone")
 P2P_CONFIRM_S = 45          # a new Wi-Fi Direct address re-adds Wi-Fi (up to ~30 s to reconnect)
 
 
@@ -164,6 +166,7 @@ class Hub:
             except Exception as e:  # Avahi down: casting by Wi-Fi discovery + host name still works
                 log.warning("mdns: %s", e)
             if not self.wifi_direct_names(r):
+                r.route = "network"          # the hotspot lives in casthub-p2p, with Wi-Fi Direct
                 await r.show_name()          # findable now; the first waits for Wi-Fi Direct
         self.ui_task = asyncio.create_task(self.ui.keep_in_sync())
         if self.cfg.airplay and self.receivers:
@@ -188,6 +191,7 @@ class Hub:
             except OSError:
                 if not first.name_ready:     # no Wi-Fi Direct daemon: mDNS alone finds us
                     log.warning("casthub-p2p not reachable; showing the name without Wi-Fi Direct")
+                    first.route = first.route or "network"      # no hotspot either
                     await first.show_name()
                 await asyncio.sleep(10)
                 continue
@@ -203,6 +207,9 @@ class Hub:
                             if self.p2p_fallback:
                                 self.p2p_fallback.cancel()
                             await first.show_name()
+                            self.wait_for_route(first)
+                    elif ev["event"] == "route" and ev.get("route") in ROUTES:
+                        await first.set_route(ev["route"])
                     elif ev["event"] == "source":
                         await first.on_p2p_source(ev["addr"], int(ev["rtsp_port"]), ev.get("name", ""))
                     elif ev["event"] == "gone":
@@ -286,9 +293,20 @@ class Hub:
         def show_anyway() -> None:
             if not first.name_ready:
                 log.warning("casthub-p2p did not confirm %s within %d s; showing it", first.name, P2P_CONFIRM_S)
+                first.route = first.route or "network"
                 asyncio.ensure_future(first.show_name())
         self.p2p_fallback = asyncio.get_running_loop().call_later(P2P_CONFIRM_S, show_anyway)
         return True
+
+    def wait_for_route(self, first: Receiver) -> None:
+        """The name is findable; if casthub-p2p never says how senders reach us (an older one, or
+        the hotspot start hangs), show the same-network instructions after ROUTE_WAIT_S."""
+        def fallback() -> None:
+            if not first.route:
+                log.warning("no route from casthub-p2p within %d s; showing same-network instructions", ROUTE_WAIT_S)
+                asyncio.ensure_future(first.set_route("network"))
+        if not first.route:
+            asyncio.get_running_loop().call_later(ROUTE_WAIT_S, fallback)
 
     async def end_all(self) -> None:
         """End every cast (SIGUSR1: casthub-leave, so the leave page isn't under a video)."""

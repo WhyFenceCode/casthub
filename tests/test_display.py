@@ -141,3 +141,14 @@ class TestApp(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestJoinCode(unittest.TestCase):
+    def test_fields_unescaped(self):
+        from casthub.discovery import hotspot
+        from casthub.ui import app
+        code = hotspot.qr_payload('Cast Hub; "AB"', "pa:ss\\word")
+        self.assertEqual(app.hotspot_ssid(code), 'Cast Hub; "AB"')
+        self.assertEqual(app.hotspot_password(code), "pa:ss\\word")
+        self.assertEqual(app.hotspot_ssid(""), "")
+        self.assertEqual(app.hotspot_ssid("http://example.invalid"), "")

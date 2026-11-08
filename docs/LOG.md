@@ -334,3 +334,17 @@ sharing as a setting (default off), a Wi-Fi Direct cast pauses the hotspot.
 Accepted by the owner: Display mode starts on the idle screens from the login screen, the busy
 rule works, and Ctrl + Alt + Esc opens the leave page during a cast. Built during M3/M5 (Sway
 kiosk, idle/busy screens, leave page); no new work was needed.
+
+## School Wi-Fi, stage 3: instructions follow the route, 2026-11-08
+
+- casthub-p2p sends the route (network / hotspot / hotspot-alone) to the hub, and again to any
+  hub that connects later. The receiver's name, and with it the instructions, show only once both
+  the name is findable and the route is known; in the instructions' place the screen says
+  "Finding the best way to connect". No route within 20 s after the name (an older casthub-p2p):
+  same-network instructions. No casthub-p2p at all: same network.
+- Rows: same network: Apple "Control Centre › Screen Mirroring › NAME", Windows "Press Win + K".
+  Hotspot: Apple "Scan the code, then Screen Mirroring › NAME", Windows unchanged (Wi-Fi Direct
+  pauses the hotspot), and a row with the hotspot's name and password for laptops that can't scan
+  ("Cast Hub Wi-Fi", or "Wi-Fi · offline" when the hub left the network). QR only on hotspot routes.
+- Previews (local only) checked in light and dark. Tests: the name waits for the route, the
+  join-code parsing, a later hub hears the route. Live test pending (owner, at school).

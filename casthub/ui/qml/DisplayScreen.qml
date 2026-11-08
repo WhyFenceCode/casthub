@@ -17,6 +17,10 @@ Rectangle {
     property string coordinates: ""
     property bool airplay: true
     property string qrPayload: ""           // hotspot join code; empty = hotspot off (D13)
+    property string hotspotName: ""         // from the join code: for laptops, which can't scan it
+    property string hotspotPassword: ""
+    property string route: ""               // network | hotspot | hotspot-alone; "" while the hub decides
+    readonly property bool hotspotOn: qrPayload !== "" && route.indexOf("hotspot") === 0
     property string theme: "auto"           // auto | light | dark
 
     // ---- leave page (Ctrl+Alt+Esc), drawn on top of this screen ----------------
@@ -154,8 +158,20 @@ Rectangle {
 
         // How to connect, one row per way in. Snapped to the right: against the QR code when
         // it is shown, else the right margin. Each key stays on one line.
+        // Loader in the instructions' place while the hub decides how senders reach it (SPEC D28):
+        // the rows never show steps that won't work on this network.
+        Label {
+            visible: root.receiverName === "" && root.screenState === "idle" && !root.pinCode
+            anchors.right: parent.right; anchors.rightMargin: root.margin
+            y: 494 * root.uy
+            u: root.u; tok: t; textStyle: t.dlabel; color: t.muted
+            textFormat: Text.StyledText
+            text: root.dotted("Finding the best way to connect")
+        }
+
         Grid {
             id: ways
+            visible: root.receiverName !== ""
             anchors.right: qr.visible ? qr.left : parent.right
             anchors.rightMargin: qr.visible ? 2 * root.gutter : root.margin
             y: 494 * root.uy
@@ -165,11 +181,16 @@ Rectangle {
             verticalItemAlignment: Grid.AlignVCenter
             readonly property var rows: {
                 var r = []
-                var name = root.receiverName ? " › " + root.receiverName : ""     // none while loading
-                if (root.airplay) r.push({ k: "Apple · AirPlay", v: "Control Centre › Screen Mirroring" + name })
+                var name = " › " + root.receiverName
+                // Hotspot routes: Apple devices join the hub's own Wi-Fi first (the network keeps
+                // devices apart, or the hub left it). Windows always finds the hub over Wi-Fi Direct.
+                if (root.airplay)
+                    r.push({ k: "Apple · AirPlay",
+                             v: (root.hotspotOn ? "Scan the code, then Screen Mirroring" : "Control Centre › Screen Mirroring") + name })
                 r.push({ k: "Windows · Miracast", v: "Press Win + K" + name })
-                // The hub's own Wi-Fi: for phones whose network keeps them from reaching the hub.
-                if (root.qrPayload) r.push({ k: "Not in the list", v: "Scan the code to join Cast Hub's Wi-Fi" })
+                if (root.hotspotOn && root.hotspotName)
+                    r.push({ k: root.route === "hotspot-alone" ? "Wi-Fi · offline" : "Cast Hub Wi-Fi",
+                             v: root.hotspotName + (root.hotspotPassword ? " · password " + root.hotspotPassword : "") })
                 return r
             }
             Repeater {
@@ -189,7 +210,7 @@ Rectangle {
         // Hotspot QR. Always dark modules on a light ground so phones read it in either theme.
         Rectangle {
             id: qr
-            visible: root.qrPayload !== ""
+            visible: root.hotspotOn && root.receiverName !== ""
             readonly property real side: 110 * root.u
             readonly property real pad: root.dark ? 6 * root.u : 0
             width: side + 2 * pad; height: width

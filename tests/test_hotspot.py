@@ -175,6 +175,16 @@ class TestHotspot(unittest.TestCase):
         self.assertNotIn("psk", d.events[-1])
         self.assertEqual(d.nm, [])                                        # Wi-Fi left alone
 
+    def test_a_later_hub_hears_the_route(self):
+        d = FakeDaemon(config.parse({}))
+        h = self.hotspot(d)
+        self.run_start(h)
+        adds = sum(1 for c in d.calls if c[1] == "AddNetwork")
+        d.events.clear()
+        self.run_start(h)                                                 # another hub connects
+        self.assertEqual([e["route"] for e in d.events], [ROUTE_HOTSPOT])
+        self.assertEqual(sum(1 for c in d.calls if c[1] == "AddNetwork"), adds)   # not restarted
+
     def test_radar_channel_runs_alone_and_gives_wifi_back(self):
         d = FakeDaemon(config.parse({}), station=5260)
         h = self.hotspot(d)

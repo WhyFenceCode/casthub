@@ -27,8 +27,10 @@ FAKE = {
     "receiverName": os.environ.get("PREVIEW_NAME", "Brand-1"),
     "location": "Springfield, Region",
     "coordinates": "12.34° N · 56.78° W",
-    "qrPayload": "WIFI:T:WPA;S:<ssid>;P:<placeholder>;;",
+    "route": "network",
 }
+HOTSPOT = {"qrPayload": "WIFI:T:WPA;S:Cast Hub AB12;P:placeholder12;;",
+           "hotspotName": "Cast Hub AB12", "hotspotPassword": "placeholder12"}
 QML = {
     "screen": ROOT / "casthub" / "ui" / "qml" / "DisplayScreen.qml",
     "leave": ROOT / "casthub" / "switcher" / "qml" / "LeavePage.qml",
@@ -60,7 +62,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", default="1080x633")
     ap.add_argument("--scheme", default="light", choices=["light", "dark"])
-    ap.add_argument("--only", help="screen name to render (idle, connecting, busy, pin, leave)")
+    ap.add_argument("--only", help="screen name to render (idle, loading, hotspot, alone, connecting, busy, pin, leave)")
     a = ap.parse_args()
     w, h = (int(v) for v in a.size.split("x"))
     app = QGuiApplication(sys.argv)
@@ -72,6 +74,9 @@ def main() -> int:
     base = {**FAKE, "theme": a.scheme, "fixedNow": fixed}
     shots = {
         "idle": ("screen", {}),
+        "loading": ("screen", {"receiverName": "", "route": ""}),
+        "hotspot": ("screen", {**HOTSPOT, "route": "hotspot"}),
+        "alone": ("screen", {**HOTSPOT, "route": "hotspot-alone"}),
         "connecting": ("screen", {"screenState": "connecting", "deviceName": "Pixel Phone"}),
         "busy": ("screen", {"screenState": "streaming", "deviceName": "Pixel Phone",
                             "busyText": "Laptop tried to connect · Brand-1 is in use"}),

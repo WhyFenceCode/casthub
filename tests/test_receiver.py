@@ -676,6 +676,7 @@ class TestRenameAfterCast(unittest.TestCase):
             rec = Receiver("CAST-OLD00", "OUT-1", (1920, 1080), 0, 1028, "reject", notify, FakePipeline,
                            on_ended=on_ended)
             await rec.start()
+            rec.route = "network"                          # casthub-p2p: how senders reach us
             await rec.show_name()                          # the hub: findable now
             _r, w = await asyncio.open_connection("127.0.0.1", rec.mice_port)
             w.write(mp.source_ready("<pc-name>", rtsp_port, SOURCE_ID))
@@ -902,3 +903,18 @@ class TestUiSync(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             got = run(go(tmp))
         self.assertEqual(got[0]["name"], "CAST-ABCDE")
+
+
+class TestRoute(unittest.TestCase):
+    def test_name_waits_for_the_route(self):
+        async def go():
+            events = []
+
+            async def notify(msg):
+                events.append(msg)
+            rec = Receiver("CAST-ABCDE", "OUT-1", (1920, 1080), 0, 1028, "reject", notify, FakePipeline)
+            await rec.show_name()                         # findable, but the hotspot isn't decided yet
+            await rec.set_route("hotspot")
+            await rec.set_route("hotspot")                # no change: no new message
+            return [(e["name"], e["route"]) for e in events if e["cmd"] == "state"]
+        self.assertEqual(asyncio.run(go()), [("", ""), ("CAST-ABCDE", "hotspot")])

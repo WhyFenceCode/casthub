@@ -51,12 +51,46 @@ if PANEL:
     ACTIONS = {"leave": [PANEL_CLOSE]}
 
 
+ROUTES = ("", "network", "hotspot", "hotspot-alone")
+
+
+def _wifi_field(payload: str, key: str) -> str:
+    """One field of a `WIFI:T:WPA;S:<ssid>;P:<password>;;` join code, unescaped."""
+    if not payload.startswith("WIFI:"):
+        return ""
+    fields, cur, esc = [], "", False
+    for c in payload[5:]:
+        if esc:
+            cur, esc = cur + c, False
+        elif c == "\\":
+            esc = True
+        elif c == ";":
+            fields.append(cur)
+            cur = ""
+        else:
+            cur += c
+    for f in fields:
+        k, sep, v = f.partition(":")
+        if sep and k == key:
+            return v
+    return ""
+
+
+def hotspot_ssid(payload: str) -> str:
+    return _wifi_field(payload, "S")
+
+
+def hotspot_password(payload: str) -> str:
+    return _wifi_field(payload, "P")
+
+
 class DisplayUI(QObject):
     def __init__(self, app: QGuiApplication, cfg: cfgmod.Config) -> None:
         super().__init__()
         self.app, self.cfg = app, cfg
         self.views: dict[str, QQuickView] = {}
         self.names: dict[str, str] = {}             # output → the hub's receiver name
+        self.routes: dict[str, str] = {}            # output → how senders reach the hub
         self.qr = ""
         for s in app.screens():
             self.add_screen(s)
@@ -90,11 +124,14 @@ class DisplayUI(QObject):
             # Only the hub's name for this screen, once it is findable (it changes after every
             # cast); until then "" and the screen says Loading.
             "receiverName": self.names.get(screen.name(), ""),
+            "route": self.routes.get(screen.name(), ""),
             "location": self.cfg.location,
             "coordinates": self.cfg.coordinates(),
             "airplay": self.cfg.airplay,
             "theme": self.cfg.theme,
             "qrPayload": self.qr,
+            "hotspotName": hotspot_ssid(self.qr),
+            "hotspotPassword": hotspot_password(self.qr),
             "panel": PANEL,
         }
         for k, val in props.items():
@@ -130,6 +167,8 @@ class DisplayUI(QObject):
             self.qr = qr
             for r in self.roots():
                 r.setProperty("qrPayload", qr)
+                r.setProperty("hotspotName", hotspot_ssid(qr))
+                r.setProperty("hotspotPassword", hotspot_password(qr))
 
     # ---- leave page -------------------------------------------------------------
     def open_leave(self) -> None:
@@ -189,6 +228,11 @@ class DisplayUI(QObject):
                 r.setProperty("deviceName", str(msg.get("device", "")))
                 if "name" in msg:                    # the hub's name; "" while a new one is being set up
                     r.setProperty("receiverName", str(msg["name"]))
+                if "route" in msg:                   # network | hotspot | hotspot-alone; "" = deciding
+                    if msg["route"] not in ROUTES:
+                        raise ValueError(f"bad route {msg['route']!r}")
+                    self.routes[msg["output"]] = msg["route"]
+                    r.setProperty("route", msg["route"])
             elif cmd == "pin":
                 pin = str(msg.get("pin", ""))
                 if pin and not (pin.isdigit() and len(pin) in (4, 8)):
