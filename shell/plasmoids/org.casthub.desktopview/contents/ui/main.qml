@@ -15,6 +15,7 @@ import org.kde.taskmanager as TaskManager
 import org.kde.ksysguard.sensors as Sensors
 import org.kde.plasma.workspace.calendar as PlasmaCalendar
 import org.kde.plasma.plasma5support as P5Support
+import org.kde.plasma.workspace.dbus as DBus
 import "uikit"
 import "uikit/Names.js" as Names
 
@@ -62,8 +63,12 @@ ContainmentItem {
         virtualDesktop: vdi.currentDesktop
     }
     readonly property var dockApps: ["org.kde.konsole", "org.kde.dolphin"]
-    readonly property var dockCmds: ["kstart -- konsole --hide-menubar --hide-toolbars", "kstart dolphin"]
+    // The console runs in its own process (its D-Bus name then has its pid, see consoleTabs)
+    // and without Konsole's tab bar: the panel header shows the tabs instead.
+    readonly property var dockCmds: ["kstart -- konsole --separate --hide-menubar --hide-toolbars --hide-tabbar",
+                                     "kstart dolphin"]
     property string dockTitle: ""
+    property int dockPid: 0
     property bool dockPresent: false
     Repeater {
         model: deskTasks
@@ -72,6 +77,7 @@ ContainmentItem {
             readonly property bool isDock: root.dashboard && model.AppId === root.dockApps[root.tab]
             Component.onCompleted: if (isDock) root.dockPresent = true
             Binding { when: isDock; target: root; property: "dockTitle"; value: Names.cleanTitle(model.display, model.AppName) }
+            Binding { when: isDock; target: root; property: "dockPid"; value: model.AppPid || 0 }
         }
     }
     // Open the docked app the first time its tab is empty.
@@ -84,9 +90,52 @@ ContainmentItem {
             exec.run(root.dockCmds[root.tab])
         }
     }
-    onTabChanged: { dockPresent = false; dockTitle = ""; dockRescan.restart() }
+    onTabChanged: { dockPresent = false; dockTitle = ""; dockPid = 0; dockRescan.restart() }
     Timer { id: dockRescan; interval: 50; onTriggered: { root.dockPresent = false; for (var i = 0; i < deskTasks.count; i++) { var idx = deskTasks.index(i, 0); if (deskTasks.data(idx, TaskManager.AbstractTasksModel.AppId) === root.dockApps[root.tab]) root.dockPresent = true } dockCheck.restart() } }
     Connections { target: deskTasks; function onCountChanged() { dockRescan.restart() } }
+
+    // ---- console tabs: Konsole's real tabs, shown in the panel header -----------------
+    // Konsole's D-Bus API (org.kde.konsole-<pid>, /Windows/1): sessionList, currentSession,
+    // setCurrentSession, newSession; /Sessions/<id> title(1) is the tab's displayed title.
+    // Arguments are plain numbers: with a "signature" the int never reached Konsole.
+    property var consoleTabs: []                 // [{ id, title }]
+    property int consoleCurrent: 0
+    property int consoleRound: 0                 // drops replies from an older refresh
+    readonly property string konsoleService: dockPid > 0 ? "org.kde.konsole-" + dockPid : ""
+    function konsole(path, iface, member, args, done) {
+        if (!konsoleService) return
+        var r = DBus.SessionBus.asyncCall({ service: konsoleService, path: path, iface: "org.kde.konsole." + iface,
+                                            member: member, arguments: args })
+        if (done) r.finished.connect(function () { if (!r.isError) done(r.value) })
+    }
+    function refreshConsoleTabs() {
+        var round = ++consoleRound
+        konsole("/Windows/1", "Window", "sessionList", [], function (ids) {
+            var list = [], left = ids.length
+            if (!left) { if (round === root.consoleRound) root.consoleTabs = []; return }
+            ids.forEach(function (id, i) {
+                list[i] = { id: Number(id), title: "" }
+                konsole("/Sessions/" + id, "Session", "title", [1], function (title) {
+                    list[i].title = String(title)
+                    if (--left === 0 && round === root.consoleRound) root.consoleTabs = list
+                })
+            })
+            konsole("/Windows/1", "Window", "currentSession", [], function (cur) {
+                if (round === root.consoleRound) root.consoleCurrent = Number(cur)
+            })
+        })
+    }
+    function switchConsoleTab(id) { konsole("/Windows/1", "Window", "setCurrentSession", [id], null); consoleNudge.restart() }
+    function newConsoleTab() { konsole("/Windows/1", "Window", "newSession", [], null); consoleNudge.restart() }
+    function tabLabel(title) {                   // "~/src : bash" → "~/src"; Konsole's default format
+        var at = title.lastIndexOf(" : ")
+        return at > 0 ? title.slice(0, at) : title
+    }
+    Timer { interval: 1000; repeat: true; triggeredOnStart: true
+            running: root.tab === 0 && root.dashboard && root.konsoleService !== ""
+            onTriggered: root.refreshConsoleTabs() }
+    Timer { id: consoleNudge; interval: 120; onTriggered: root.refreshConsoleTabs() }
+    onKonsoleServiceChanged: { consoleTabs = []; consoleCurrent = 0 }
 
     // =============================================================================
     // Console / Files: Today panel + app panel frame
@@ -225,6 +274,7 @@ ContainmentItem {
             border.width: root.hair; border.color: isConsole ? term.line : t.line
 
             Label {
+                visible: !panel.isConsole || root.consoleTabs.length === 0
                 x: 15 * root.u; y: t.shellPanelHeader * root.u / 2 - height / 2
                 width: parent.width - 30 * root.u
                 u: root.u; tok: panel.pt; textStyle: t.barlabel
@@ -232,6 +282,56 @@ ContainmentItem {
                 text: (panel.isConsole ? "Console" : "Files") + (root.dockTitle
                       ? "<font color=\"" + panel.pt.muted + "\">  ·  " + root.dockTitle.replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</font>" : "")
                 elide: Text.ElideRight
+            }
+            // Console: "Console   01 ~/src   02 logs   +", one entry per Konsole tab.
+            Row {
+                id: consoleTabRow
+                visible: panel.isConsole && root.consoleTabs.length > 0
+                x: 15 * root.u; height: t.shellPanelHeader * root.u
+                spacing: 18 * root.u
+                Label {
+                    anchors.verticalCenter: parent.verticalCenter
+                    u: root.u; tok: panel.pt; textStyle: t.barlabel; text: "Console"
+                }
+                Repeater {
+                    model: root.consoleTabs
+                    delegate: Item {
+                        required property var modelData
+                        required property int index
+                        readonly property bool current: modelData.id === root.consoleCurrent
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: tabText.width; height: consoleTabRow.height
+                        Label {
+                            id: tabText
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.min(implicitWidth, 160 * root.u); elide: Text.ElideRight
+                            u: root.u; tok: panel.pt; textStyle: t.barlabel
+                            color: parent.current || tabMouse.containsMouse ? panel.pt.fg : panel.pt.muted
+                            text: root.pad(index + 1) + "  " + root.tabLabel(modelData.title)
+                        }
+                        Rectangle {                  // the current tab sits on the header rule
+                            visible: parent.current
+                            anchors.bottom: parent.bottom; width: parent.width; height: 2 * root.hair
+                            color: t.accent
+                        }
+                        MouseArea { id: tabMouse; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.switchConsoleTab(parent.modelData.id) }
+                    }
+                }
+                Item {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: plus.width + 8 * root.u; height: consoleTabRow.height
+                    Label {
+                        id: plus
+                        anchors.centerIn: parent
+                        u: root.u; tok: panel.pt; textStyle: t.barlabel
+                        color: plusMouse.containsMouse ? panel.pt.fg : panel.pt.muted
+                        text: "+"
+                    }
+                    MouseArea { id: plusMouse; anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor; onClicked: root.newConsoleTab() }
+                }
             }
             Rectangle { y: t.shellPanelHeader * root.u - root.hair; width: parent.width; height: root.hair; color: panel.pt.line }
 
