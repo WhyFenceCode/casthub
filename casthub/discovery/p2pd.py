@@ -65,6 +65,8 @@ class P2PDaemon:
         self.announced: set[str] = set()
         self.pin = ""
         self.advertising = False
+        self.advertised_dev = ""
+        self.probes = 0
 
     # ---- D-Bus helpers -------------------------------------------------------------
     async def call(self, path: str, iface: str, member: str, sig: str = "", body: list | None = None, dest: str = WPAS):
@@ -122,8 +124,41 @@ class P2PDaemon:
             with contextlib.suppress(RuntimeError):
                 await self.call(self.dev, IFACE, "VendorElemRem", "iay", [frame, old_ie])
         await self.listen()
+        with contextlib.suppress(RuntimeError):      # count discovery scans that reach us (diagnostics)
+            await self.call(self.dev, IFACE, "SubscribeProbeReq")
         self.advertising = True
+        self.advertised_dev = self.dev
         log.info("advertising %r (MS-MICE host name from this machine)", self.name)
+        await self.log_state()
+
+    async def log_state(self) -> None:
+        """What wpa_supplicant really advertises now (journal only; no addresses)."""
+        try:
+            conf = await self.get(self.dev, P2PDEV, "P2PDeviceConfig")
+            wfd = await self.get("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs")
+            ext = [bytes(v).hex() for v in conf.get("VendorExtension", Variant("aay", [])).value]
+            log.info("state: name=%r go_intent=%s vendor_ext=%s wfd=%s", conf["DeviceName"].value,
+                     conf.get("GOIntent", Variant("u", -1)).value, [e[:14] + "…" for e in ext], bytes(wfd).hex())
+        except (RuntimeError, KeyError) as e:
+            log.warning("state: %s", e)
+
+    async def watchdog(self) -> None:
+        """NetworkManager re-adds the Wi-Fi interface on reconnects (new D-Bus path, our
+        settings gone). Re-apply them, and report how many discovery scans reached us."""
+        while True:
+            await asyncio.sleep(20)
+            if self.probes:
+                log.info("%d discovery scans from nearby devices in the last 20 s", self.probes)
+                self.probes = 0
+            if not self.advertising:
+                continue
+            old = self.advertised_dev
+            with contextlib.suppress(RuntimeError):
+                await self.find_device()
+            if self.dev != old:
+                log.info("Wi-Fi interface was re-added; advertising again")
+                with contextlib.suppress(RuntimeError):
+                    await self.advertise()
 
     async def unadvertise(self) -> None:
         """Stop answering P2P discovery and drop the Miracast IEs."""
@@ -149,6 +184,9 @@ class P2PDaemon:
 
     # ---- groups ---------------------------------------------------------------------
     def on_signal(self, msg: Message) -> bool:
+        if msg.message_type == MessageType.SIGNAL and msg.member == "ProbeRequest":
+            self.probes += 1
+            return False
         if msg.message_type != MessageType.SIGNAL or msg.interface != P2PDEV:
             return False
         handler = {"GONegotiationRequest": self.on_go_request,
@@ -310,6 +348,7 @@ class P2PDaemon:
         server = await asyncio.start_unix_server(self.on_client, str(SOCK))
         os.chmod(SOCK, 0o666)        # who may talk is checked per connection (allowed())
         await self.start()
+        self.watch_task = asyncio.create_task(self.watchdog())
         async with server:
             await server.serve_forever()
 
