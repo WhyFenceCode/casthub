@@ -136,10 +136,12 @@ class P2PDaemon:
         try:
             conf = await self.get(self.dev, P2PDEV, "P2PDeviceConfig")
             wfd = await self.get("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs")
-            ext = [bytes(v).hex() for v in conf.get("VendorExtension", Variant("aay", [])).value]
-            log.info("state: name=%r go_intent=%s vendor_ext=%s wfd=%s", conf["DeviceName"].value,
-                     conf.get("GOIntent", Variant("u", -1)).value, [e[:14] + "…" for e in ext], bytes(wfd).hex())
-        except (RuntimeError, KeyError) as e:
+            val = {k: v.value for k, v in conf.items()}
+            ext = [bytes(v).hex() for v in val.get("VendorExtension", [])]
+            log.info("state: name=%r go_intent=%s vendor_ext=%s wfd=%s", val.get("DeviceName"),
+                     val.get("GOIntent"), [e[:14] + "…" for e in ext], bytes(wfd).hex())
+        except Exception as e:  # diagnostics must never stop advertising
+
             log.warning("state: %s", e)
 
     async def watchdog(self) -> None:
