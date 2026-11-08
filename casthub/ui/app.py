@@ -5,7 +5,7 @@ Runs as the `casthub` user inside the Display Sway session (modes/display/sway.c
     python3 -m casthub.ui.app [--config /etc/casthub/casthub.toml]
 
 Control socket ($XDG_RUNTIME_DIR/casthub-ui.sock, JSON lines; only this user can reach it):
-    {"cmd": "leave"}                                      open the leave page (Ctrl+Alt+Esc)
+    {"cmd": "leave"}                                      open the leave page (Ctrl+Alt+Esc; panel: close)
     {"cmd": "state", "output": "eDP-1", "state": "connecting", "device": "<name>"}
     {"cmd": "busy", "output": "eDP-1", "text": "<message>"}  (empty text hides it)
     {"cmd": "pin", "output": "eDP-1", "pin": "12345670"}     (Wi-Fi Direct pairing; empty hides it)
@@ -37,11 +37,17 @@ os.environ.setdefault("QML_XHR_ALLOW_FILE_READ", "1")
 QML = Path(__file__).resolve().parent / "qml" / "DisplayScreen.qml"
 QR_FILE = Path("/run/casthub/hotspot-qr.txt")      # written by the hotspot service (root); holds the join code
 LEAVE = "/usr/libexec/casthub/casthub-leave"
+PANEL_CLOSE = "/usr/libexec/casthub/casthub-panel-close"
+# CASTHUB_PANEL=1: Display mode as a panel inside Workstation or Console (casthub-display).
+# There, Ctrl+Alt+Esc and the bar's "Close" just close the panel; no leave page.
+PANEL = os.environ.get("CASTHUB_PANEL") == "1"
 ACTIONS = {
     "leave": [LEAVE, "--now"],
     "reboot": ["systemctl", "reboot"],
     "poweroff": ["systemctl", "poweroff"],
 }
+if PANEL:
+    ACTIONS = {"leave": [PANEL_CLOSE]}
 
 
 class DisplayUI(QObject):
@@ -86,6 +92,7 @@ class DisplayUI(QObject):
             "airplay": self.cfg.airplay,
             "theme": self.cfg.theme,
             "qrPayload": self.qr,
+            "panel": PANEL,
         }
         for k, val in props.items():
             root.setProperty(k, val)
@@ -162,7 +169,10 @@ class DisplayUI(QObject):
     def handle(self, msg: dict) -> None:
         cmd = msg["cmd"]
         if cmd == "leave":
-            self.open_leave()
+            if PANEL:
+                subprocess.Popen([PANEL_CLOSE])
+            else:
+                self.open_leave()
         elif cmd in ("state", "busy", "pin"):
             v = self.views.get(msg["output"])
             if v is None:

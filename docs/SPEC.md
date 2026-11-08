@@ -35,6 +35,7 @@ Nov 7, 2026 · Torsten
 | D24 | Brand setup (later, M11) | The brand becomes a setting, so Cast Hub can ship as custom software for anyone: a brand pack (wordmark text, signature text and font or image, accent colour, light/dark tones, boot splash) replaces the hard-coded owner brand. The owner's brand becomes the default pack; applying a pack rebuilds every generated surface (tokens, splash, wallpapers, lock signature). |
 | D25 | Settings tool (later, M11) | "Cast Hub Settings" on the Workstation desktop (a window) and in Console (a text UI): adjust the brand (D24), and choose what the machine boots into: the login screen, or straight into Display mode, where Ctrl + Alt + Esc then leads to the login screen. System changes go through polkit as an admin. |
 | D26 | Device name (later, M11) | Receivers are named `CAST-<DeviceID>`: a short ID that is stable per machine (derived from the machine ID, not readable back to it), shown big on the Display screen. Extra screens add `-2`, `-3`. Replaces the `name_prefix-<n>` naming. |
+| D27 | Display panel | `casthub-display`, typed in Workstation or Console (owner, Nov 8), opens Display mode as a panel inside that session: a nested Sway window with the same screens and receiver. Ctrl + Alt + Esc, or "Close" in its bar, closes the panel and ends any cast; there is no leave page. In Console, Ctrl + Alt + Esc closes the panel first and leaves Console only when no panel is open. |
 
 ---
 

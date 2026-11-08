@@ -126,6 +126,7 @@ class Hub:
         await asyncio.gather(*(r.end_current() for r in self.receivers), return_exceptions=True)
 
     async def stop(self) -> None:
+        await self.end_all()          # tell each PC the cast is over (RTSP teardown)
         for r in self.receivers:
             await r.stop()
         await self.mdns.close()

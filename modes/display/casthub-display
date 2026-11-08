@@ -1,0 +1,30 @@
+#!/bin/bash
+# casthub-display: Display mode as a panel inside Workstation or Console.
+#
+# Runs a nested Sway (one window, fullscreen) with the Display UI and the receiver hub, so the
+# machine takes casts without leaving the current session. Ctrl+Alt+Esc, or "Close" in the
+# panel's bar, closes the panel and ends any cast (casthub-panel-close). The real Display mode
+# from the login screen is unchanged.
+set -u
+run=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+state="$run/casthub-panel.swaysock"
+
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+  echo "casthub-display: run it inside Workstation or Console (needs a Wayland session)" >&2
+  exit 1
+fi
+if [ -e "$state" ] && SWAYSOCK=$(cat "$state") swaymsg -t get_version >/dev/null 2>&1; then
+  echo "casthub-display: the Display panel is already open (Ctrl+Alt+Esc closes it)" >&2
+  exit 0
+fi
+if ss -Hltn 'sport = :7250' 2>/dev/null | grep -q .; then
+  echo "casthub-display: a receiver is already running on this machine" >&2
+  exit 1
+fi
+rm -f "$state"
+logger -t casthub-display "opening the Display panel"
+# Sway sets SWAYSOCK for its own children; drop the outer one (Console) so nothing mixes them.
+env -u SWAYSOCK -u I3SOCK WLR_BACKENDS=wayland sway -c /usr/share/casthub/display/panel.conf 2>&1 \
+  | systemd-cat -t casthub-panel
+rm -f "$state"
+logger -t casthub-display "Display panel closed"

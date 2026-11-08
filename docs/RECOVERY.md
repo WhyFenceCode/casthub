@@ -51,6 +51,9 @@ If the top bar is gone and nothing responds: Ctrl+Alt+F3, log in, run the comman
 
 ## Receiver (M3, `tools/install-receiver.sh`)
 
+A Display panel (`casthub-display`) that won't close: run `/usr/libexec/casthub/casthub-panel-close`
+from another terminal.
+
 Wi-Fi misbehaving after installing the receiver? Stop the Wi-Fi Direct service; NetworkManager
 keeps managing Wi-Fi either way. A Wi-Fi Direct cast is an in-memory NM profile,
 `casthub-wifi-direct`; `nmcli connection delete casthub-wifi-direct` ends one by hand.

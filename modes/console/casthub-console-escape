@@ -1,0 +1,4 @@
+#!/bin/bash
+# Ctrl+Alt+Esc in Console (modes/console/sway.conf): close the Display panel if one is open
+# (casthub-display), else leave Console as before.
+/usr/libexec/casthub/casthub-panel-close || exec swaymsg exit

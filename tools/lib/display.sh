@@ -16,6 +16,12 @@ install_display() {
   install -Dm644 "$repo/modes/display/casthub-display.target" /usr/lib/systemd/user/casthub-display.target
   install -Dm644 "$repo/modes/display/casthub-hub.service" /usr/lib/systemd/user/casthub-hub.service
   install -Dm644 "$repo/modes/display/sway.conf" /usr/share/casthub/display/sway.conf
+  # Display as a panel inside Workstation or Console (casthub-display, Ctrl+Alt+Esc closes it)
+  install -Dm755 "$repo/modes/display/casthub-display" /usr/bin/casthub-display
+  install -Dm755 "$repo/modes/display/casthub-panel-close" /usr/libexec/casthub/casthub-panel-close
+  install -Dm644 "$repo/modes/display/panel.conf" /usr/share/casthub/display/panel.conf
+  install -Dm755 "$repo/modes/console/casthub-console-escape" /usr/libexec/casthub/casthub-console-escape
+  install -Dm644 "$repo/modes/console/sway.conf" /usr/share/casthub/console/sway.conf
   install -d -m 0750 -o root -g casthub /etc/casthub
   return 0
 }

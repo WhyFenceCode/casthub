@@ -12,6 +12,7 @@ Item {
     property real modeX: 376
     property string modeText: "Display mode"
     property string dateText: ""
+    property string logoutText: "Log out"
     property bool showLogout: false        // idle screen: a visible way out (owner request)
     signal logoutRequested()
     anchors.left: parent.left; anchors.right: parent.right
@@ -40,7 +41,7 @@ Item {
             visible: bar.showLogout
             u: bar.u; tok: bar.tok; textStyle: bar.tok.label
             color: logoutArea.containsMouse ? bar.tok.fg : bar.tok.muted
-            text: "Log out"
+            text: bar.logoutText
             Rectangle { visible: logoutArea.containsMouse; y: parent.height + 3 * bar.u; width: parent.width; height: Math.max(1, bar.u); color: bar.tok.accent }
             MouseArea {
                 id: logoutArea
