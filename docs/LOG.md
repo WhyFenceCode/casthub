@@ -303,3 +303,8 @@ Windows with 14, so the PC always owned the group.
   firmware crash), at home and then at school.
 - Next (stage 2): route detection, the hub's own hotspot for iPhones, a loader before the
   connection instructions.
+- Live test 1 (home): the network cast worked (`via mice`). The Wi-Fi Direct cast paired with
+  us as group owner and no firmware crash, but the PC never joined: the group came up on a
+  different channel from our Wi-Fi (two channels, the radio splitting its time), and formation
+  timed out after 15 s. The group now always takes our Wi-Fi's channel (Connect `frequency`),
+  which the hotspot stage needs anyway. Covered by a test.

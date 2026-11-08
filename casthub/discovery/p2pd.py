@@ -443,10 +443,29 @@ class P2PDaemon:
             raise
         self.pair_watch = asyncio.create_task(self._guard(self.pair_deadline(self.pair_started)))
 
+    async def station_frequency(self) -> int:
+        """The frequency (MHz) of the network our Wi-Fi is connected to, 0 if none."""
+        wifi = wifi_interface(self.cfg.miracast_interface)
+        try:
+            (path,) = await self.call(ROOT, WPAS, "GetInterface", "s", [wifi])
+            bss = await self.get(path, IFACE, "CurrentBSS")
+            if not bss or bss == "/":
+                return 0
+            return int(await self.get(bss, f"{WPAS}.BSS", "Frequency"))
+        except (RuntimeError, ValueError, TypeError):
+            return 0
+
     async def connect(self, peer: str) -> None:
         args = {"peer": Variant("o", peer), "wps_method": Variant("s", "pbc"),
                 "go_intent": Variant("i", GO_INTENT), "persistent": Variant("b", False),
                 "join": Variant("b", False)}
+        # The group shares our Wi-Fi's channel. Left to choose, wpa_supplicant may take another
+        # one (5805 next to a station on 5745): the radio then splits its time between the two
+        # and the PC never found the group within the 15 s formation window.
+        freq = await self.station_frequency()
+        if freq:
+            args["frequency"] = Variant("i", freq)
+        log.info("group owner on %s", f"{freq} MHz (our Wi-Fi's channel)" if freq else "any channel (no Wi-Fi)")
         try:
             await self.call(self.dev, P2PDEV, "Connect", "a{sv}", [args])
         except RuntimeError as e:

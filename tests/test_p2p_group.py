@@ -116,7 +116,12 @@ class TestPairAsGroupOwner(unittest.TestCase):
 
         async def wifi_addresses():
             return ["192.0.2.20"]
+
+        async def station_frequency():
+            return d.freq
+        d.freq = 5745
         d.call, d.get, d.run, d.wifi_addresses = call, get, run, wifi_addresses
+        d.station_frequency = station_frequency
         d.broadcast = lambda ev: d.calls.append(("hub", ev["event"], ev))
         return d
 
@@ -134,6 +139,14 @@ class TestPairAsGroupOwner(unittest.TestCase):
         self.assertEqual(body[0]["wps_method"].value, "pbc")
         self.assertEqual(body[0]["peer"].value, "/peer/1")
         self.assertFalse(body[0]["persistent"].value)
+        self.assertEqual(body[0]["frequency"].value, 5745)            # our Wi-Fi's channel
+
+    def test_connect_without_wifi_lets_the_radio_choose(self):
+        d = self.daemon()
+        d.freq = 0
+        asyncio.run(d.connect("/peer/1"))
+        _, _, body = next(c for c in d.calls if c[1] == "Connect")
+        self.assertNotIn("frequency", body[0])
 
     def test_group_owner_serves_dhcp_and_announces(self):
         d = self.daemon()
