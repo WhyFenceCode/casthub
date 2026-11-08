@@ -325,6 +325,6 @@ sharing as a setting (default off), a Wi-Fi Direct cast pauses the hotspot.
   Live test pending: iPhone scans the QR, joins, AirPlay over the hotspot; then a Windows cast
   over Wi-Fi Direct (hotspot pauses, comes back).
 - Live test (home): the hotspot came up beside our Wi-Fi, a phone joined it (DHCP lease), an
-  iPhone mirrored over AirPlay, and after the cast the hotspot paused for the new Wi-Fi Direct
+  iPhone mirrored over AirPlay through the hotspot (owner had turned off its home Wi-Fi), and after the cast the hotspot paused for the new Wi-Fi Direct
   address and came back. No firmware crash. **Partially accepted by the owner.** Still open: a
   Windows cast over Wi-Fi Direct (channel fix + hotspot pausing), and the test at school.
