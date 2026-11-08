@@ -107,9 +107,10 @@ function adopt(w, initial) {
     // The Display panel (casthub-display, SPEC D27) is a nested Sway window: keep it on the
     // view it was opened from, fullscreen and focused, rather than moving it to Desktop.
     if (w.resourceClass === "wlroots") {
-        w.fullScreen = true;
+        panels.push(w);
+        w.closed.connect(() => { panels = panels.filter((p) => p !== w); layoutPanels(); });
+        layoutPanels();
         workspace.activeWindow = w;
-        log("Display panel shown fullscreen");
         return;
     }
     for (let i = 0; i < 2; i++) {
@@ -119,6 +120,24 @@ function adopt(w, initial) {
     w.desktopsChanged.connect(() => {
         if (!placing && docked.indexOf(w) < 0 && onDockDesktop(w)) sendToDesktopView(w, true);
     });
+}
+
+// Display panel windows (casthub-display). One: fullscreen. Several (`--screens N`, the M4
+// multi-receiver test): side by side across the screen, so every receiver can be watched.
+let panels = [];
+function layoutPanels() {
+    if (panels.length === 1) {
+        panels[0].fullScreen = true;
+        log("Display panel shown fullscreen");
+        return;
+    }
+    const a = workspace.clientArea(KWin.MaximizeArea, panels[0].output, workspace.currentDesktop);
+    const w = Math.floor(a.width / Math.max(1, panels.length));
+    panels.forEach((p, i) => {
+        p.fullScreen = false;
+        p.frameGeometry = { x: a.x + i * w, y: a.y, width: w, height: a.height };
+    });
+    if (panels.length) log(panels.length + " Display panel windows side by side");
 }
 
 function show(i) {

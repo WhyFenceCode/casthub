@@ -9,6 +9,9 @@
 #   casthub-display [--capture FILE]
 #     --capture FILE  also save the PC's video stream, exactly as received, to FILE (debugging;
 #                     it holds whatever the PC shows, so keep it under local/ and delete it after)
+#   casthub-display --screens N [--capture FILE]
+#     N screens (1-4) in the panel, one window each: the hub starts one receiver per screen,
+#     on ports 7250, 7251… (the M4 multi-receiver test). The windows are placed side by side.
 #   casthub-display --kill
 #     close the panel and stop every panel process of this user, also stuck or orphaned ones
 #     (SIGTERM, then SIGKILL). Display mode's own hub (casthub-hub.service) is left alone.
@@ -67,12 +70,20 @@ if [ "${1:-}" = --kill ]; then
   kill_panel
   exit
 fi
-if [ "${1:-}" = --capture ]; then
-  [ -n "${2:-}" ] || { echo "casthub-display: --capture needs a file" >&2; exit 2; }
-  capture=$(realpath -m -- "$2")
-  mkdir -p -- "$(dirname -- "$capture")"
-  shift 2
-fi
+screens=1
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --capture)
+      [ -n "${2:-}" ] || { echo "casthub-display: --capture needs a file" >&2; exit 2; }
+      capture=$(realpath -m -- "$2")
+      mkdir -p -- "$(dirname -- "$capture")"
+      shift 2 ;;
+    --screens)
+      case "${2:-}" in [1-4]) screens=$2 ;; *) echo "casthub-display: --screens takes 1 to 4" >&2; exit 2 ;; esac
+      shift 2 ;;
+    *) echo "casthub-display: unknown option $1 (see the top of $0)" >&2; exit 2 ;;
+  esac
+done
 if [ -z "${WAYLAND_DISPLAY:-}" ]; then
   echo "casthub-display: run it inside Workstation or Console (needs a Wayland session)" >&2
   exit 1
@@ -97,7 +108,21 @@ if [ -n "$capture" ]; then
   echo "casthub-display: saving the PC's stream to $capture"
   logger -t casthub-display "saving the PC's stream (capture on)"
 fi
-env -u SWAYSOCK -u I3SOCK CASTHUB_CAPTURE="$capture" WLR_BACKENDS=wayland sway -c /usr/share/casthub/display/panel.conf 2>&1 \
-  | systemd-cat -t casthub-panel
+[ "$screens" -gt 1 ] && logger -t casthub-display "$screens screens (one receiver each)"
+outer_sway=${SWAYSOCK:-}
+# WLR_WL_OUTPUTS: the nested Sway opens one window per output, and the hub sees N screens.
+env -u SWAYSOCK -u I3SOCK CASTHUB_CAPTURE="$capture" WLR_BACKENDS=wayland WLR_WL_OUTPUTS="$screens" \
+  sway -c /usr/share/casthub/display/panel.conf 2>&1 | systemd-cat -t casthub-panel &
+panel=$!
+# In Console (Sway) the panel rule makes the window fullscreen; with several, tile them instead.
+# (Workstation: the KWin views script places them side by side.)
+if [ "$screens" -gt 1 ] && [ -n "$outer_sway" ]; then
+  for _ in $(seq 20); do
+    sleep 0.5
+    [ "$(SWAYSOCK=$outer_sway swaymsg -t get_tree 2>/dev/null | grep -c '"app_id": "wlroots"')" -ge "$screens" ] && break
+  done
+  SWAYSOCK=$outer_sway swaymsg '[app_id="wlroots"] fullscreen disable' >/dev/null 2>&1
+fi
+wait "$panel"
 rm -f "$state"
 logger -t casthub-display "Display panel closed"
