@@ -41,6 +41,9 @@ PROPS = "org.freedesktop.DBus.Properties"
 RUN = Path("/run/casthub")
 SOCK = RUN / "p2p.sock"
 NM_LEASES = Path("/var/lib/NetworkManager")    # dnsmasq-<group if>.leases when we are GO
+PAIR_TIMEOUT_S = 60          # give up on a Wi-Fi Direct pairing after this
+PAIR_RETRY_AFTER_S = 3       # a repeated request from the PC this long after ours restarts NM
+PAIR_RESTARTS = 4
 INVITE_FALLBACK_S = 10        # after refusing an invitation, wait this long for the PC to pair afresh
 ZONE = "casthub-p2p"            # firewalld zone (system/firewalld/casthub-p2p.xml): DHCP + RTP
 
@@ -65,6 +68,8 @@ class P2PDaemon:
         self.group_if = ""
         self.connecting = False            # NM is pairing with a PC (one at a time)
         self.pair_started = 0.0
+        self.pair_restarts = 0
+        self.pair_watch: asyncio.Task | None = None
         self.saved_methods: str | None = None   # WPS config methods before we advertised
         self.peers: dict[str, int] = {}    # peer path → RTSP port from its WFD IE
         self.announced: set[str] = set()
@@ -227,6 +232,7 @@ class P2PDaemon:
             log.exception("p2p handler failed")
 
     async def on_pbc_request(self, peer: str, *_):
+        await asyncio.sleep(0.5)     # let wpa_supplicant finish answering the request first
         await self.pair(peer)
 
     async def on_pd_display_pin(self, peer: str, pin: str, *_):
@@ -289,11 +295,23 @@ class P2PDaemon:
 
     async def pair(self, peer: str) -> None:
         """Have NetworkManager connect to this PC (push-button). NM ends up GO or client;
-        on_group_started then finds the PC's address."""
-        if not self.advertising or self.connecting:
+        on_group_started then finds the PC's address.
+
+        NM's connect call to wpa_supplicant can fail at once ("unspecified error") when it
+        lands right on the PC's request, and NM then just waits 45 s while refusing the PC's
+        retries. So we don't wait on NM: if the PC asks again before a group forms, we
+        restart NM's attempt, which then answers the PC's new request."""
+        if not self.advertising:
             return
-        self.connecting = True
-        self.pair_started = time.monotonic()
+        now = time.monotonic()
+        if self.connecting:
+            if now - self.pair_started > PAIR_RETRY_AFTER_S and self.pair_restarts < PAIR_RESTARTS:
+                self.pair_restarts += 1
+                self.pair_started = now
+                log.info("the PC asked again before Wi-Fi Direct formed; restarting NetworkManager's attempt")
+                await self.nmcli("--wait", "0", "connection", "up", p2p.NM_PROFILE)
+            return
+        self.connecting, self.pair_started, self.pair_restarts = True, now, 0
         try:
             with contextlib.suppress(RuntimeError):
                 port = p2p.parse_wfd_rtsp_port(bytes(await self.get(peer, PEER, "IEs")))
@@ -304,19 +322,29 @@ class P2PDaemon:
             rc, out = await self.nmcli(*p2p.nm_profile_args(addr, p2p.wfd_subelements(), ZONE))
             if rc:
                 log.warning("could not add the Wi-Fi Direct profile: %s", out.strip()[:200])
+                self.connecting = False
                 return
             log.info("pairing with the PC through NetworkManager (push-button)")
-            rc, out = await self.nmcli("--wait", "60", "connection", "up", p2p.NM_PROFILE, timeout=70)
+            rc, out = await self.nmcli("--wait", "0", "connection", "up", p2p.NM_PROFILE)
             if rc:
-                log.warning("Wi-Fi Direct connection failed: %s", out.strip()[:200])
-                await self.end_session()
-        finally:
+                log.warning("NetworkManager would not start Wi-Fi Direct: %s", out.strip()[:200])
+        except Exception:
             self.connecting = False
+            raise
+        self.pair_watch = asyncio.create_task(self._guard(self.pair_deadline(self.pair_started)))
+
+    async def pair_deadline(self, started: float) -> None:
+        await asyncio.sleep(PAIR_TIMEOUT_S)
+        if self.connecting and self.pair_started >= started:
+            log.warning("Wi-Fi Direct did not form within %d s; giving up", PAIR_TIMEOUT_S)
+            self.connecting = False
+            await self.end_session()
 
     async def on_group_started(self, props: dict):
         role = props.get("role", Variant("s", "")).value
         ifpath = props["interface_object"].value
         self.group_if = await self.get(ifpath, IFACE, "Ifname")
+        self.connecting = False
         log.info("group started, role %s", role)
         # As client, the PC (GO) usually hands out addresses in the 4-way handshake (EAPOL IP
         # allocation): no DHCP, and wpa_supplicant tells us the GO's address right here.
@@ -362,6 +390,7 @@ class P2PDaemon:
 
     async def on_group_finished(self, props: dict):
         log.info("group finished")
+        self.connecting = False
         await self.end_session()
 
     async def end_session(self) -> None:
