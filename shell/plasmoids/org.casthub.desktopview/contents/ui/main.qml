@@ -125,6 +125,22 @@ ContainmentItem {
             })
         })
     }
+    // Close a tab the way Konsole does: hang up its shell (Konsole then removes the tab).
+    // Konsole's D-Bus API has no close call. With a program running in the tab, the first
+    // click only arms the button ("End?") for 3 s.
+    property int consoleArmed: 0                 // session id waiting for a second click
+    Timer { id: disarm; interval: 3000; onTriggered: root.consoleArmed = 0 }
+    function closeConsoleTab(id) {
+        konsole("/Sessions/" + id, "Session", "processId", [], function (shell) {
+            konsole("/Sessions/" + id, "Session", "foregroundProcessId", [], function (fg) {
+                var busy = Number(fg) > 0 && Number(fg) !== Number(shell)
+                if (busy && root.consoleArmed !== id) { root.consoleArmed = id; disarm.restart(); return }
+                root.consoleArmed = 0
+                if (Number(shell) > 1) exec.run("kill -HUP " + Number(shell))
+                consoleNudge.restart()
+            })
+        })
+    }
     function switchConsoleTab(id) { konsole("/Windows/1", "Window", "setCurrentSession", [id], null); consoleNudge.restart() }
     function newConsoleTab() { konsole("/Windows/1", "Window", "newSession", [], null); consoleNudge.restart() }
     function tabLabel(title) {                   // "~/src : bash" → "~/src"; Konsole's default format
@@ -299,24 +315,38 @@ ContainmentItem {
                         required property var modelData
                         required property int index
                         readonly property bool current: modelData.id === root.consoleCurrent
+                        readonly property bool armed: root.consoleArmed === modelData.id
+                        readonly property bool hovered: tabMouse.containsMouse || closeMouse.containsMouse
                         anchors.verticalCenter: parent.verticalCenter
-                        width: tabText.width; height: consoleTabRow.height
+                        // Room for the close button is always kept, so tabs don't shift on hover.
+                        width: tabText.width + 8 * root.u + closeText.width; height: consoleTabRow.height
                         Label {
                             id: tabText
                             anchors.verticalCenter: parent.verticalCenter
                             width: Math.min(implicitWidth, 160 * root.u); elide: Text.ElideRight
                             u: root.u; tok: panel.pt; textStyle: t.barlabel
-                            color: parent.current || tabMouse.containsMouse ? panel.pt.fg : panel.pt.muted
+                            color: parent.current || parent.hovered ? panel.pt.fg : panel.pt.muted
                             text: root.pad(index + 1) + "  " + root.tabLabel(modelData.title)
+                        }
+                        Label {
+                            id: closeText
+                            x: tabText.width + 8 * root.u; anchors.verticalCenter: parent.verticalCenter
+                            u: root.u; tok: panel.pt; textStyle: t.barlabel
+                            visible: parent.hovered || parent.armed
+                            color: parent.armed ? t.accent : closeMouse.containsMouse ? panel.pt.fg : panel.pt.muted
+                            text: parent.armed ? "End?" : "✕"
                         }
                         Rectangle {                  // the current tab sits on the header rule
                             visible: parent.current
                             anchors.bottom: parent.bottom; width: parent.width; height: 2 * root.hair
                             color: t.accent
                         }
-                        MouseArea { id: tabMouse; anchors.fill: parent; hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
+                        MouseArea { id: tabMouse; anchors.fill: parent; anchors.rightMargin: closeText.width + 4 * root.u
+                                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                                     onClicked: root.switchConsoleTab(parent.modelData.id) }
+                        MouseArea { id: closeMouse; x: closeText.x - 4 * root.u; width: closeText.width + 8 * root.u
+                                    height: parent.height; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.closeConsoleTab(parent.modelData.id) }
                     }
                 }
                 Item {
