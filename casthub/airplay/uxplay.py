@@ -56,6 +56,11 @@ def parse_line(line: str) -> Event | None:
     return None
 
 
+def device_id() -> str:
+    """A new random AirPlay device ID, as UxPlay's -m wants it: xx:xx:xx:xx:xx:xx."""
+    return p2p.random_address().hex(":")
+
+
 def uxplay_args(name: str, size: tuple[int, int], video_port: int, audio_port: int,
                 device_id: str, replace: bool = False, binary: str = "uxplay") -> list[str]:
     w, h = size
@@ -135,7 +140,7 @@ class UxPlay:
                 with contextlib.suppress(Exception):
                     size = await self.size_now(self.receiver.output) or size
             args = uxplay_args(self.receiver.name, size, self.video_port, self.audio_port,
-                               p2p.random_address(), self.replace, self.binary)
+                               device_id(), self.replace, self.binary)
             log.info("uxplay: AirPlay as %s (%dx%d)", self.receiver.name, *size)
             try:
                 self.proc = await asyncio.create_subprocess_exec(

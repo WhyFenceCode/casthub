@@ -422,6 +422,15 @@ class TestAirPlay(unittest.TestCase):
         self.assertIn("-nohold", a)
         self.assertNotIn("-nohold", uxplay_args("n", (1, 1), 1, 2, "x"))
 
+    def test_device_id_is_text(self):
+        """UxPlay refused raw bytes for -m ("non-ascii or non-UTF-8 string") and never started."""
+        from casthub.airplay.uxplay import device_id
+        ids = {device_id() for _ in range(20)}
+        self.assertEqual(len(ids), 20)
+        for i in ids:
+            self.assertRegex(i, r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
+            self.assertEqual(int(i[:2], 16) & 0x03, 0x02)          # locally administered, unicast
+
     def test_pipeline(self):
         desc = media.describe(media.default_spec(1032, "t", "OUT-1", ("OUT-2",), source="airplay", audio_port=1034))
         for part in ("rtph264depay", "rtpL16depay", "port=1034", "tee name=vt", "name=vsink1", "address=127.0.0.1"):
