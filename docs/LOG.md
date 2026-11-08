@@ -159,9 +159,10 @@ agenda hidden when no calendar is set up unless it is a holiday; thin bar everyw
 
 ## M3: receiver (done), 2026-11-08
 
-Acceptance: a Windows 11 PC casts with Win + K to one receiver on port 7250 and the picture
-shows fullscreen. Owner confirmed it, both over the same network (MS-MICE) and over Wi-Fi
-Direct (owner asked for both). 102 tests pass.
+Acceptance (owner, over Wi-Fi Direct): a Windows 11 PC casts with Win + K and the picture
+shows fullscreen. The hub logged all 11 successful casts as `via p2p`: Windows paired
+directly with the Chromebook. Casting over the same network (MS-MICE, port 7250) is built
+but has never carried a cast; it is M4B. 102 tests pass.
 
 - Hub, MICE listener, RTSP sink (M1-M16 handshake), GStreamer pipeline (VA-API H.264, AAC).
   The M3 reply lists only parameters we support; Windows stalled when it saw others.
@@ -180,3 +181,11 @@ Direct (owner asked for both). 102 tests pass.
   `--capture FILE` for debugging, `--kill` for a stuck panel.
 - Known limits: no PIN pairing over Wi-Fi Direct (NetworkManager); multi-receiver placement
   and port 7251 are M4.
+
+## M4B: Miracast over the network (open), 2026-11-08
+
+Built in M3 but untested: mDNS `_display._tcp` on 7250, the MS-MICE listener, and the "supports
+infrastructure" bit in our Wi-Fi Direct probe responses that should make Windows connect over
+the network instead of pairing. Windows has always paired over Wi-Fi Direct so far. To do: find
+out why, and get one cast to play `via mice`. M4's two receivers (7250, 7251) depend on it,
+since Wi-Fi Direct offers only one receiver per radio.
