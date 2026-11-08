@@ -140,6 +140,7 @@ class Receiver:
                 except TimeoutError:
                     await sink.request_idr()
                     await first_frame.wait()
+                await media.place_on_output(self.output)
                 await self.set_state("streaming", src.name)
 
             async def link_watch() -> str:
