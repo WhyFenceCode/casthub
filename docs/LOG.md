@@ -156,3 +156,27 @@ agenda hidden when no calendar is set up unless it is a holiday; thin bar everyw
   password block and Switch user / Sleep / Unlock in the login screen's style. Unlocking goes
   through kscreenlocker's authenticator only; tested with `kscreenlocker_greet --testing`
   (which also showed a load error falls back to KDE's built-in locker, not a locked-out screen).
+
+## M3: receiver (done), 2026-11-08
+
+Acceptance: a Windows 11 PC casts with Win + K to one receiver on port 7250 and the picture
+shows fullscreen. Owner confirmed it, both over the same network (MS-MICE) and over Wi-Fi
+Direct (owner asked for both). 102 tests pass.
+
+- Hub, MICE listener, RTSP sink (M1-M16 handshake), GStreamer pipeline (VA-API H.264, AAC).
+  The M3 reply lists only parameters we support; Windows stalled when it saw others.
+- Wi-Fi Direct: push-button pairing through NetworkManager (NM 1.58 has no PIN). Windows'
+  invitations to old groups are refused, so it pairs again.
+- Video freeze fixed: an audio sink that never pre-rolled held the pipeline (async=false).
+  waylandsink crashed on output resize, so the video uses glimagesink. Each cast plays in its
+  own process (`casthub/media/player.py`), which the hub kills when the cast ends. A stuck
+  sink once froze the whole hub.
+- A cast ends when the PC's packets stop for 8 s (Wi-Fi Direct link dropped).
+- Receiver names `CAST-XXXXX` (D26), new at hub start and after every cast, with a new random
+  Wi-Fi Direct address each time. The screen says Loading (moving dots) until the name is
+  findable.
+- Video modes offered in the shape of the screen or window (extend mode).
+- `casthub-display` opens Display mode as a panel inside Workstation or Console (D27);
+  `--capture FILE` for debugging, `--kill` for a stuck panel.
+- Known limits: no PIN pairing over Wi-Fi Direct (NetworkManager); multi-receiver placement
+  and port 7251 are M4.
