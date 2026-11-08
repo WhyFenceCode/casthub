@@ -422,6 +422,18 @@ class TestAirPlay(unittest.TestCase):
         self.assertIn("-nohold", a)
         self.assertNotIn("-nohold", uxplay_args("n", (1, 1), 1, 2, "x"))
 
+    def test_log_is_line_buffered(self):
+        """The hub must see each UxPlay line as it happens, not when UxPlay exits."""
+        import shutil
+
+        from casthub.airplay.uxplay import uxplay_args
+        if not shutil.which("stdbuf"):
+            self.skipTest("no stdbuf")
+        a = uxplay_args("n", (1, 1), 1, 2, "x")
+        i = next(i for i, x in enumerate(a) if x.endswith("stdbuf"))
+        self.assertEqual(a[i + 1], "-oL")
+        self.assertLess(i, a.index("uxplay"))
+
     def test_device_id_is_text(self):
         """UxPlay refused raw bytes for -m ("non-ascii or non-UTF-8 string") and never started."""
         from casthub.airplay.uxplay import device_id

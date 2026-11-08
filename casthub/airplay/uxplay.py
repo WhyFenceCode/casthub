@@ -75,6 +75,10 @@ def uxplay_args(name: str, size: tuple[int, int], video_port: int, audio_port: i
     ]
     if replace:
         args.append("-nohold")              # busy_policy replace: a new iPhone takes over
+    # UxPlay's log goes into a pipe, where C stdio holds it back in 4 KB blocks: the first test
+    # cast reached the hub only when UxPlay exited. Line-buffered, each line arrives at once.
+    if buf := shutil.which("stdbuf"):
+        args = [buf, "-oL", "-eL", *args]
     if pdeath := shutil.which("setpriv"):   # UxPlay goes with the hub, even after SIGKILL
         args = [pdeath, "--pdeathsig", "TERM", *args]
     return args
