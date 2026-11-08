@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from casthub import config as cfgmod  # noqa: E402
 from casthub.discovery import mdns, p2p  # noqa: E402
 from casthub.hub.receiver import Receiver  # noqa: E402
+from casthub.media import pipeline as media  # noqa: E402
 from casthub.mice import protocol as mp  # noqa: E402
 from casthub.rtsp import message as rm  # noqa: E402
 from casthub.rtsp import wfd  # noqa: E402
@@ -304,6 +305,19 @@ class TestLinkLost(unittest.TestCase):
         states, final = run(go())
         self.assertIn("streaming", states)
         self.assertEqual(final, "idle")
+
+
+class TestPipelineDescription(unittest.TestCase):
+    def test_sinks_never_hold_up_playback(self):
+        """Windows lists an audio track it doesn't fill while the PC is silent: an async sink
+        that never prerolls froze the picture after one frame. Both sinks must be async=false
+        and must not wait on the PC's timestamps."""
+        desc = media.describe(media.default_spec(1028, "t", "OUT-1"))
+        for name in ("vsink", "asink"):
+            sink = next(part for part in desc.split("!") if f"name={name}" in part)
+            self.assertIn("async=false", sink)
+            self.assertIn("sync=false", sink)
+        self.assertIn("leaky=downstream", desc)        # audio can't back up into the demuxer
 
 
 class TestDiscovery(unittest.TestCase):

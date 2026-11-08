@@ -54,17 +54,6 @@ STAGES = [("net", "src", "src"), ("jitter", "jb", "src"), ("rtp-out", "depay", "
           ("shown", "vsink", "sink")]
 
 
-def _to_screen(spec: MediaSpec) -> str:
-    """Between decoder and waylandsink: convert and copy each frame into ordinary memory.
-    With Windows the decoder took 2 frames and then stopped: waylandsink (fullscreen, so Sway
-    may scan the buffer out directly) kept the decoder's few GPU surfaces, and the decoder had
-    none left for the next frame. waylandsink then works from its own buffers."""
-    if spec.video_sink != "waylandsink":
-        return ""
-    convert = "vapostproc" if spec.decoder.startswith("va") else "videoconvert"
-    return f" ! {convert} ! video/x-raw,format=BGRx"
-
-
 def describe(spec: MediaSpec) -> str:
     """gst-launch description of the pipeline (also what the hub logs)."""
     caps = "application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T"
@@ -73,7 +62,7 @@ def describe(spec: MediaSpec) -> str:
         # sync=false: show each frame when it is decoded. With sync=true the sink waited on the
         # PC's timestamps, which don't match our clock; after the first frame every frame was
         # "late" and dropped, so the picture froze.
-        sink += " fullscreen=true sync=false"
+        sink += " fullscreen=true sync=false async=false"
         if spec.output:
             sink += f" fullscreen-output={spec.output}"
     parts = [
@@ -81,15 +70,19 @@ def describe(spec: MediaSpec) -> str:
         f"rtpjitterbuffer name=jb latency={spec.latency_ms}",
         "rtpmp2tdepay name=depay" + (" ! tee name=cap ! queue" if spec.capture else ""), "tsdemux name=demux latency=0",
         "demux. ! video/x-h264 ! queue name=vq max-size-time=0 max-size-bytes=0 max-size-buffers=64 ! h264parse name=vparse"
-        f" ! {spec.decoder}{_to_screen(spec)} ! {sink} name=vsink",
+        f" ! {spec.decoder} ! {sink} name=vsink",
     ]
     desc = " ! ".join(parts[:4]) + " " + parts[4]
     if spec.audio:
+        # async=false on both sinks (the real cause of the frozen picture): Windows lists an AAC
+        # track but sends nothing on it while the PC is silent. An async audio sink then never
+        # prerolls, the pipeline never reaches PLAYING, and the video sink waits after its first
+        # frame for good. Reproduced from a capture; with async=false every frame plays.
         # tsdemux feeds audio and video from one thread: if audio backs up, video stops too
         # (the picture froze after 2 frames). So audio never waits on the PC's timestamps, and
         # its queue drops old audio rather than block the demuxer.
         desc += (f" demux. ! audio/mpeg ! queue name=aq leaky=downstream max-size-time=500000000 ! aacparse ! avdec_aac"
-                 f" ! audioconvert ! audioresample ! {spec.audio_sink} name=asink sync=false")
+                 f" ! audioconvert ! audioresample ! {spec.audio_sink} name=asink sync=false async=false")
     if spec.capture:   # the stream exactly as the PC sent it, to replay with filesrc ! tsdemux
         desc += f' cap. ! queue leaky=downstream ! filesink location="{spec.capture}" sync=false async=false'
     return desc
