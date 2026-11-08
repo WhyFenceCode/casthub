@@ -10,12 +10,19 @@ if ! SWAYSOCK=$sock swaymsg -t get_version >/dev/null 2>&1; then
   rm -f "$state"
   exit 1
 fi
-# The hub ends its casts on SIGTERM (RTSP teardown to each PC); give it a moment.
-if pkill -TERM -u "$(id -u)" -f 'casthub\.hub\.__main__'; then
+# The hub ends its casts on SIGTERM (RTSP teardown to each PC); give it a moment. A hub that
+# doesn't stop (once: its event loop blocked in the video sink) is killed, or it would outlive
+# the panel and keep port 7250.
+hub='casthub\.hub\.__main__'
+if pkill -TERM -u "$(id -u)" -f "$hub"; then
   for _ in $(seq 20); do
-    pgrep -u "$(id -u)" -f 'casthub\.hub\.__main__' >/dev/null || break
+    pgrep -u "$(id -u)" -f "$hub" >/dev/null || break
     sleep 0.2
   done
+  if pkill -KILL -u "$(id -u)" -f "$hub"; then
+    logger -t casthub-display "the hub did not stop; killed it"
+    pkill -KILL -u "$(id -u)" -f 'casthub\.media\.player' || true
+  fi
 fi
 SWAYSOCK=$sock swaymsg exit >/dev/null 2>&1
 rm -f "$state"
