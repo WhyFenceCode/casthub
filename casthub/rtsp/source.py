@@ -188,7 +188,7 @@ class RtspSource:
     def _end(self, why: str) -> None:
         if self._ended and not self._ended.done():
             self._ended.set_result(why)
-        for f in (self._m2, self._setup, self._playing):
+        for f in (self._conn, self._m2, self._setup, self._playing):
             if f and not f.done():
                 f.set_exception(RtspError("closed" if why == "closed" else "protocol", why))
                 f.exception()

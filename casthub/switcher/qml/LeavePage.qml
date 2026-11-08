@@ -1,6 +1,8 @@
 // Leave Display mode (SPEC D7): Ctrl+Alt+Esc opens this page on top of the screen.
 // No PIN: leaving only returns to the login screen. Same frame as the idle screen (design
 // pages 12-13); the instruction rows become the choices. Python runs the chosen action.
+// "Passthrough setup" (SPEC D29) opens a second view on the same page: the Miracast displays
+// found nearby, search again, turn off. In `fixed` mode (casthub.toml) it only shows the target.
 import QtQuick
 import "../../ui/qml"
 import "../../ui/qml/uikit"
@@ -13,25 +15,68 @@ Rectangle {
     property string theme: "auto"
     property int selected: 0
     property string error: ""
+    // From the hub: {state: off|searching|connecting|on|failed, tv, why, tvs: [names], locked, allowed}
+    property var passthrough: ({ state: "off", tv: "", why: "", tvs: [], locked: false, allowed: true })
+    property bool searching: false          // a search for displays is running (~10 s)
+    property string view: "main"            // main | passthrough
 
-    signal chosen(string action)            // "leave" | "reboot" | "poweroff"; never a "later" one
+    signal chosen(string action)            // leave | reboot | poweroff | tv_find | tv_off | tv_on:<name>
     signal cancelled()
 
     property var fixedNow: null
     readonly property date clockNow: fixedNow !== null ? fixedNow : new Date()
     readonly property bool dark: theme === "dark" || theme === "auto" && (clockNow.getHours() < 7 || clockNow.getHours() >= 19)
 
-    // "later": shown so the option is known, but not built yet (SPEC D21, passthrough).
-    readonly property var actions: [
-        { id: "leave", k: "Log out", v: "Back to the login screen" },
-        { id: "passthrough", k: "Passthrough setup", v: "Pass AirPlay on to a Miracast display", later: true },
-        { id: "reboot", k: "Restart", v: "Restart this machine" },
-        { id: "poweroff", k: "Shut down", v: "Turn this machine off" },
-    ]
+    readonly property var pt: passthrough || ({})
+    readonly property bool ptActive: pt.state !== undefined && pt.state !== "off"
+    readonly property var mainActions: {
+        var r = [{ id: "leave", k: "Log out", v: "Back to the login screen" }]
+        if (pt.allowed !== false)
+            r.push({ id: "passthrough", k: "Passthrough setup",
+                     v: pt.state === "on" ? "Sending to " + pt.tv
+                        : pt.locked ? "Set by the administrator" : "Send casts on to a Miracast display" })
+        r.push({ id: "reboot", k: "Restart", v: "Restart this machine" })
+        r.push({ id: "poweroff", k: "Shut down", v: "Turn this machine off" })
+        return r
+    }
+    readonly property var ptActions: {
+        if (pt.locked)
+            return [{ id: "back", k: "Back", v: "To the other choices" }]
+        // Four rows at most, like the main choices (Esc goes back, as the hint says).
+        var r = []
+        var tvs = (pt.tvs || []).slice()
+        if (ptActive && pt.tv && tvs.indexOf(pt.tv) < 0) tvs.unshift(pt.tv)
+        tvs = tvs.slice(0, ptActive ? 2 : 3)
+        for (var i = 0; i < tvs.length; i++) {
+            var name = tvs[i], current = ptActive && pt.tv === name
+            r.push({ id: "tv_on:" + name, k: name,
+                     v: current && pt.state === "on" ? "Sending here"
+                        : current && pt.state !== "failed" ? "Connecting" : "Send casts here" })
+        }
+        r.push({ id: "tv_find", k: "Search again", v: searching ? "Searching" : "Look for displays nearby" })
+        if (ptActive) r.push({ id: "tv_off", k: "Turn off", v: "Back to Cast Hub's own screens" })
+        if (r.length < 4) r.push({ id: "back", k: "Back", v: "To the other choices" })
+        return r
+    }
+    readonly property var actions: view === "passthrough" ? ptActions : mainActions
     function choose(i) {
         var a = actions[i]
-        if (a.later) { error = "Coming in a later update"; return }
+        if (a.id === "passthrough") {
+            view = "passthrough"; selected = 0
+            if (!pt.locked && !searching && (pt.tvs || []).length === 0) chosen("tv_find")
+            return
+        }
+        if (a.id === "back") { view = "main"; selected = 1; return }
+        if (a.id === "tv_find" && searching) return
         chosen(a.id)
+    }
+    readonly property string ptHeading: {
+        if (pt.locked) return "Set by the administrator: " + pt.tv
+        if (pt.state === "on") return "Sending to " + pt.tv
+        if (pt.state === "searching" || pt.state === "connecting") return "Connecting to " + pt.tv
+        if (pt.state === "failed") return "Couldn't reach " + pt.tv + (pt.why ? " · " + pt.why : "")
+        if (searching) return "Looking for displays nearby"
+        return (pt.tvs || []).length ? "Pick a display to send casts to" : "No displays found yet"
     }
 
     // ---- frame ------------------------------------------------------------------
@@ -54,7 +99,7 @@ Rectangle {
     focus: true
     Keys.onPressed: function (e) {
         if (e.key !== Qt.Key_Return && e.key !== Qt.Key_Enter) root.error = ""
-        if (e.key === Qt.Key_Escape) root.cancelled()
+        if (e.key === Qt.Key_Escape) { if (root.view !== "main") { root.view = "main"; root.selected = 1 } else root.cancelled() }
         else if (e.key === Qt.Key_Down || e.key === Qt.Key_Tab) root.selected = (root.selected + 1) % root.actions.length
         else if (e.key === Qt.Key_Up || e.key === Qt.Key_Backtab) root.selected = (root.selected + root.actions.length - 1) % root.actions.length
         else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) root.choose(root.selected)
@@ -76,7 +121,9 @@ Rectangle {
         x: root.margin - 7 * root.ux
         y: 350 * root.uy - baselineOffset
         u: root.u; tok: t; textStyle: t.dclock
-        text: "Leave?"
+        text: root.view === "passthrough" ? "To a TV" : "Leave?"
+        fontSizeMode: Text.HorizontalFit
+        width: root.colX(8) - x
     }
 
     Label {
@@ -84,7 +131,9 @@ Rectangle {
         x: root.margin
         y: 435 * root.uy - baselineOffset
         u: root.u; tok: t; textStyle: t.ddate
-        text: "Choose what to do"
+        text: root.view === "passthrough" ? root.ptHeading : "Choose what to do"
+        width: root.colX(8) - x
+        elide: Text.ElideRight
     }
     Chip {
         visible: root.error !== ""
@@ -105,7 +154,7 @@ Rectangle {
         Label {
             x: 17 * root.ux; anchors.verticalCenter: parent.top
             u: root.u; tok: t; textStyle: t.dlabel
-            text: "Display mode paused"
+            text: root.view === "passthrough" ? "TV only while on · no hotspot" : "Display mode paused"
         }
         Label {
             y: 24 * root.uy - height / 2
@@ -144,8 +193,7 @@ Rectangle {
                         color: cell.part === 0 || !cell.active ? t.muted : t.fg
                         text: cell.part === 0 ? "0" + (cell.row + 1) : cell.part === 1 ? cell.a.k : cell.a.v
                     }
-                    Chip { visible: cell.part === 2 && cell.a.later === true; anchors.verticalCenter: parent.verticalCenter
-                           u: root.u; tok: t; kind: "accent"; text: "Later" }
+
                 }
                 MouseArea {
                     anchors.fill: parent; anchors.margins: -6 * root.u

@@ -62,7 +62,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", default="1080x633")
     ap.add_argument("--scheme", default="light", choices=["light", "dark"])
-    ap.add_argument("--only", help="screen name to render (idle, loading, hotspot, alone, connecting, busy, pin, leave)")
+    ap.add_argument("--only", help="screen name to render (idle, loading, hotspot, alone, connecting, busy, pin, leave, tv, passthrough)")
     a = ap.parse_args()
     w, h = (int(v) for v in a.size.split("x"))
     app = QGuiApplication(sys.argv)
@@ -82,6 +82,10 @@ def main() -> int:
                             "busyText": "Laptop tried to connect · Brand-1 is in use"}),
         "pin": ("screen", {"pinCode": "12345670"}),
         "leave": ("leave", {"selected": 0}),
+        "tv": ("screen", {"screenState": "streaming", "deviceName": "Pixel Phone", "tvName": "Living Room TV"}),
+        "passthrough": ("leave", {"view": "passthrough", "selected": 0, "passthrough": {
+            "state": "on", "tv": "Living Room TV", "why": "", "tvs": ["Living Room TV", "Projector 2"],
+            "locked": False, "allowed": True}}),
     }
     for name, (kind, props) in shots.items():
         if a.only and name != a.only:

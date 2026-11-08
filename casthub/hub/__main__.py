@@ -23,6 +23,7 @@ from casthub import config as cfgmod
 from casthub import naming
 from casthub.airplay.uxplay import UxPlay
 from casthub.discovery.mdns import Mdns
+from casthub.hub.passthrough import Passthrough
 from casthub.hub.receiver import Receiver
 
 log = logging.getLogger("casthub.hub")
@@ -30,6 +31,10 @@ P2P_SOCK = Path("/run/casthub/p2p.sock")
 ROUTE_WAIT_S = 20            # after the name is confirmed: wait this long for the route (auto mode listens first)
 ROUTES = ("network", "hotspot", "hotspot-alone")
 P2P_CONFIRM_S = 45          # a new Wi-Fi Direct address re-adds Wi-Fi (up to ~30 s to reconnect)
+
+
+def CONTROL_SOCK() -> Path:  # noqa: N802 (a path that follows the environment, like UiLink's)
+    return Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "casthub-hub.sock"
 
 
 def drm_outputs() -> list[tuple[str, tuple[int, int]]]:
@@ -117,8 +122,14 @@ class UiLink:
             return True
 
     async def send(self, msg: dict) -> None:
-        if msg.get("cmd") == "state" and msg.get("output") is not None:
+        # Kept and sent again to a (re)started UI: each screen's state and TV, and passthrough.
+        cmd = msg.get("cmd")
+        if cmd == "state" and msg.get("output") is not None:
             self.states[str(msg["output"])] = msg
+        elif cmd == "tv" and msg.get("output") is not None:
+            self.states[f"tv:{msg['output']}"] = msg
+        elif cmd == "passthrough":
+            self.states["passthrough"] = msg
         if await self.deliver(msg):
             return
         if msg.get("cmd") == "state":
@@ -144,6 +155,8 @@ class Hub:
         self.p2p_fallback: asyncio.TimerHandle | None = None
         self.airplay: UxPlay | None = None
         self.p2p_busy = False                # told casthub-p2p we're casting (not discoverable)
+        self.passthrough = Passthrough(self)
+        self.control: asyncio.Server | None = None
 
     def wifi_direct_names(self, r: Receiver) -> bool:
         """Does this receiver's name also go out over Wi-Fi Direct (the first one does)?"""
@@ -181,6 +194,10 @@ class Hub:
         if self.cfg.wifi_direct and self.receivers:
             # Keep a reference: asyncio holds tasks weakly, and an unreferenced one was collected.
             self.p2p_task = asyncio.create_task(self.p2p_link())
+        await self.serve_control()
+        await self.ui.send(self.passthrough.status())
+        if self.cfg.passthrough_mode == "fixed" and self.cfg.wifi_direct:
+            await self.passthrough.start(self.cfg.passthrough_target)      # an admin's setting
 
     async def p2p_link(self) -> None:
         """Talk to casthub-p2p (root). Wi-Fi Direct casts go to the first receiver."""
@@ -216,6 +233,8 @@ class Hub:
                         first.on_p2p_gone(ev["addr"])
                     elif ev["event"] == "pin":
                         await first.show_pin(str(ev["pin"]))
+                    elif ev["event"] in ("tvs", "tv", "tv_failed", "tv_gone"):
+                        self.passthrough.on_p2p_event(ev)
             await asyncio.sleep(2)
 
     def name_for(self, index: int, output: str) -> str:
@@ -313,7 +332,56 @@ class Hub:
         log.info("ending all casts")
         await asyncio.gather(*(r.end_current() for r in self.receivers), return_exceptions=True)
 
+    # ---- control socket: the leave page's passthrough setup -----------------------------------
+    async def serve_control(self) -> None:
+        """$XDG_RUNTIME_DIR/casthub-hub.sock, JSON lines, one reply each (the UI, same user):
+        {"cmd": "status"} · {"cmd": "tv_find"} (≈ 10 s) · {"cmd": "tv_on", "name": ...} · {"cmd": "tv_off"}"""
+        path = CONTROL_SOCK()
+        with contextlib.suppress(OSError):
+            path.unlink()
+        try:
+            self.control = await asyncio.start_unix_server(self.on_control, str(path))
+            os.chmod(path, 0o600)
+        except OSError as e:
+            log.warning("control socket: %s", e)
+
+    async def on_control(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            while line := await reader.readline():
+                try:
+                    reply = await self.control_command(json.loads(line))
+                except (ValueError, KeyError, TypeError) as e:
+                    reply = {"ok": False, "error": str(e)}
+                writer.write(json.dumps(reply).encode() + b"\n")
+                await writer.drain()
+        except ConnectionError:
+            pass
+        finally:
+            writer.close()
+
+    async def control_command(self, msg: dict) -> dict:
+        pt = self.passthrough
+        cmd = msg["cmd"]
+        if cmd == "status":
+            return {"ok": True, **pt.status()}
+        if not pt.allowed:
+            return {"ok": False, "error": "passthrough is off in casthub.toml"}
+        if pt.locked:
+            return {"ok": False, "error": "passthrough is set by the administrator"}
+        if cmd == "tv_find":
+            return {"ok": True, "tvs": await pt.find()}
+        if cmd == "tv_on":
+            await pt.start(str(msg["name"]))
+            return {"ok": True}
+        if cmd == "tv_off":
+            await pt.stop()
+            return {"ok": True}
+        raise ValueError(f"unknown cmd {cmd!r}")
+
     async def stop(self) -> None:
+        if self.control:
+            self.control.close()
+        await self.passthrough.stop()
         await self.end_all()          # tell each PC the cast is over (RTSP teardown)
         if self.airplay:
             await self.airplay.stop()

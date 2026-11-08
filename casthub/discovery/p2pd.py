@@ -15,6 +15,9 @@
 - When the PC has its address, tells the hub where its RTSP server is.
 - Runs the hub's hotspot (discovery/hotspot.py) while a hub is on screen; a Wi-Fi Direct cast
   pauses it (the radio has one slot for an access point or a group).
+- Passthrough (M10, SPEC D29): finds Miracast TVs and joins the chosen one as group owner; the
+  TV then connects to the hub's Miracast source (RTSP 7236). Meanwhile the TV link holds the
+  radio's one slot: the hotspot pauses and PCs can't pair over Wi-Fi Direct.
 
 - Gives the radio a new random Wi-Fi Direct address when the hub asks (each new receiver name),
   so Windows treats us as a new display. wpa_supplicant only picks that address when it sets up
@@ -56,6 +59,8 @@ PAIR_TIMEOUT_S = 60          # give up on a Wi-Fi Direct pairing after this
 PAIR_RETRY_AFTER_S = 3       # a repeated request from the PC this long after ours: answer it again
 PAIR_RESTARTS = 4
 GO_INTENT = 15               # always the group owner (see the module notes)
+TV_FIND_S = 8                # one search for Miracast TVs
+TV_FIND_TRIES = 4
 INVITE_FALLBACK_S = 10        # after refusing an invitation, wait this long for the PC to pair afresh
 ZONE = "casthub-p2p"            # firewalld zone (system/firewalld/casthub-p2p.xml): DHCP + RTP
 ROOT = "/fi/w1/wpa_supplicant1"
@@ -76,6 +81,10 @@ def wifi_interface(preferred: str, net: Path = Path("/sys/class/net")) -> str:
 
 
 class P2PDaemon:
+    tv_mode = False                        # (class defaults: tests build daemons without __init__)
+    tv_name = ""
+    tv_task: asyncio.Task | None = None
+
     def __init__(self, cfg: cfgmod.Config) -> None:
         self.cfg = cfg
         self.bus: MessageBus | None = None
@@ -102,6 +111,9 @@ class P2PDaemon:
         self.mice_addresses: list[str] = []      # our Wi-Fi IPv4 address(es) in the MS-MICE attributes
         self.hotspot = hotspot.Hotspot(self)
         self.hotspot_held = False          # a Wi-Fi Direct cast paused the hotspot
+        self.tv_mode = False               # passthrough: our group is with a TV, not a PC
+        self.tv_name = ""
+        self.tv_task: asyncio.Task | None = None
 
     # ---- D-Bus helpers -------------------------------------------------------------
     async def call(self, path: str, iface: str, member: str, sig: str = "", body: list | None = None, dest: str = WPAS):
@@ -174,7 +186,7 @@ class P2PDaemon:
                 "GOIntent": Variant("u", 15),
                 "VendorExtension": Variant("aay", [p2p.mice_vendor_payload(host, self.mice_addresses)])}
         await self.set(self.dev, P2PDEV, "P2PDeviceConfig", "a{sv}", conf)
-        await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements(available=not self.busy))
+        await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", self.wfd_ies())
         # Offer push-button only, so Windows pairs the way NetworkManager can (no PIN).
         if self.saved_methods is None:
             with contextlib.suppress(RuntimeError):
@@ -304,10 +316,10 @@ class P2PDaemon:
                 return
             with contextlib.suppress(RuntimeError):
                 await self.find_device()
-                await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements(available=not busy))
+                await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", self.wfd_ies())
                 if busy:
                     await self.call(self.dev, P2PDEV, "ExtendedListen", "a{sv}", [{}])     # not discoverable
-                else:
+                elif not self.tv_mode:
                     await self.listen()
         log.info("%s", "casting: not discoverable" if busy else "cast over: discoverable again")
 
@@ -325,6 +337,7 @@ class P2PDaemon:
             await self.set(self.dev, P2PDEV, "P2PDeviceConfig", "a{sv}", conf)
         with contextlib.suppress(RuntimeError):     # sink, session *not* available
             await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements(available=False))
+        await self.tv_off()
         await self.close_group()                                     # ends a Wi-Fi Direct cast, if any
         self.hotspot_held = False
         await self.hotspot.stop()
@@ -433,7 +446,7 @@ class P2PDaemon:
         """Answer the PC's push-button pairing as group owner (go_intent 15): wpa_supplicant
         forms the group, on_group_started serves it. If the PC asks again before the group
         forms (our answer crossed its retry), we answer again."""
-        if not self.advertising:
+        if not self.advertising or self.tv_mode:     # passthrough: the radio's group is the TV's
             return
         now = time.monotonic()
         if self.connecting:
@@ -515,6 +528,11 @@ class P2PDaemon:
             await self.firewall_zone(self.group_if)
             self.announce(go_ip, "")
             return
+        if self.tv_mode:
+            log.warning("the TV insisted on owning the group; we don't join as a client (firmware crash)")
+            self.broadcast({"event": "tv_failed", "why": "the TV wants to own the Wi-Fi Direct group"})
+            await self.end_session()
+            return
         log.warning("the PC owns the group and gave us no address; ending it")
         await self.end_session()
 
@@ -556,6 +574,10 @@ class P2PDaemon:
         if addr in self.announced:
             return
         self.announced.add(addr)
+        if self.tv_mode:
+            log.info("the TV joined our group; it connects to the hub's Miracast source next")
+            self.broadcast({"event": "tv", "addr": addr, "name": self.tv_name})
+            return
         port = next(iter(self.peers.values()), 7236)
         log.info("PC reachable over Wi-Fi Direct (RTSP port %d); telling the hub", port)
         self.broadcast({"event": "source", "addr": addr, "rtsp_port": port, "name": name})
@@ -564,6 +586,8 @@ class P2PDaemon:
         log.info("group finished")
         self.connecting = False
         self.group_path = ""          # already gone
+        if self.tv_mode:
+            self.broadcast({"event": "tv_gone"})
         await self.end_session()
 
     async def close_group(self) -> None:
@@ -592,6 +616,74 @@ class P2PDaemon:
         if self.hotspot_held:
             self.hotspot_held = False
             await self.hotspot.resume()
+
+    # ---- passthrough (M10): the TV ------------------------------------------------------------
+    def wfd_ies(self) -> bytes:
+        return p2p.wfd_subelements(available=not self.busy, dual_role=self.tv_mode)
+
+    async def find_tvs(self, seconds: float | None = None) -> list[dict]:
+        """Search for Miracast displays (WFD sinks) nearby: [{"name": ..., "peer": object path}]."""
+        seconds = TV_FIND_S if seconds is None else seconds
+        async with self.radio:
+            await self.find_device()
+            with contextlib.suppress(RuntimeError):
+                await self.call(self.dev, P2PDEV, "ExtendedListen", "a{sv}", [{}])
+            with contextlib.suppress(RuntimeError):
+                await self.call(self.dev, P2PDEV, "Find", "a{sv}", [{"Timeout": Variant("i", max(1, int(seconds)))}])
+            await asyncio.sleep(seconds + 0.5)
+            found = []
+            with contextlib.suppress(RuntimeError):
+                for peer in await self.get(self.dev, P2PDEV, "Peers"):
+                    with contextlib.suppress(RuntimeError):
+                        info = p2p.wfd_device_info(bytes(await self.get(peer, PEER, "IEs")))
+                        if info and info[0] in p2p.SINK_TYPES:
+                            found.append({"name": str(await self.get(peer, PEER, "DeviceName")), "peer": peer})
+            if self.advertising and not self.busy and not self.tv_mode:
+                with contextlib.suppress(RuntimeError):
+                    await self.listen()
+        log.info("found %d Miracast display(s)", len(found))
+        return found
+
+    async def tv_on(self, name: str) -> None:
+        """Join the TV called `name` as group owner (retrying the search a few times)."""
+        if self.tv_mode and self.tv_name == name and (self.connecting or self.announced):
+            return
+        if not self.tv_mode:
+            self.tv_mode = True
+            await self.hotspot.pause("passthrough")
+        self.tv_name = name
+        await self.close_group()                      # a PC's Wi-Fi Direct cast gives way
+        with contextlib.suppress(RuntimeError):
+            await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", self.wfd_ies())
+        for _ in range(TV_FIND_TRIES):
+            if not self.tv_mode or self.tv_name != name:
+                return
+            match = [t for t in await self.find_tvs() if t["name"] == name]
+            if match:
+                log.info("joining the TV as group owner (push-button)")
+                self.connecting, self.pair_started, self.pair_restarts = True, time.monotonic(), 0
+                await self.connect(match[0]["peer"])
+                self.pair_watch = asyncio.create_task(self._guard(self.pair_deadline(self.pair_started)))
+                return
+        log.warning("the TV was not found")
+        self.broadcast({"event": "tv_failed", "why": "not found"})
+
+    async def tv_off(self) -> None:
+        if self.tv_task:
+            self.tv_task.cancel()
+            self.tv_task = None
+        if not self.tv_mode:
+            return
+        log.info("passthrough off: the radio goes back to casts and the hotspot")
+        self.tv_mode, self.tv_name, self.connecting = False, "", False
+        await self.close_group()
+        self.announced.clear()
+        if self.advertising:
+            with contextlib.suppress(RuntimeError):
+                await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", self.wfd_ies())
+                if not self.busy:
+                    await self.listen()
+        await self.hotspot.resume()
 
     # ---- hub socket ----------------------------------------------------------------------
     def broadcast(self, event: dict) -> None:
@@ -628,6 +720,15 @@ class P2PDaemon:
                         asyncio.ensure_future(self._guard(self.hotspot.start()))    # once per hub session
                     elif msg.get("cmd") == "busy":
                         await self.set_busy(bool(msg.get("busy")))
+                    elif msg.get("cmd") == "tv_find":
+                        tvs = await self.find_tvs()
+                        self.broadcast({"event": "tvs", "list": [t["name"] for t in tvs]})
+                    elif msg.get("cmd") == "tv_on":
+                        if self.tv_task:
+                            self.tv_task.cancel()
+                        self.tv_task = asyncio.create_task(self._guard(self.tv_on(str(msg["name"]))))
+                    elif msg.get("cmd") == "tv_off":
+                        await self.tv_off()
                 except (ValueError, KeyError, RuntimeError) as e:
                     log.warning("hub message: %s", e)
         finally:

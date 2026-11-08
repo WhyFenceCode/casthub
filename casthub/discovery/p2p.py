@@ -47,9 +47,17 @@ WFD_MAX_THROUGHPUT_MBPS = 200
 PRIMARY_DEVICE_TYPE = bytes.fromhex("00070050f2040001")
 
 
-def wfd_subelements(rtsp_port: int = 7236, available: bool = True) -> bytes:
-    """WFD Device Information subelement, as wpa_supplicant's WFDIEs property expects (id, len, data)."""
+WFD_SOURCE, WFD_PRIMARY_SINK, WFD_SECONDARY_SINK, WFD_DUAL_ROLE = 0, 1, 2, 3     # device type, bits 0-1
+SINK_TYPES = (WFD_PRIMARY_SINK, WFD_SECONDARY_SINK, WFD_DUAL_ROLE)
+
+
+def wfd_subelements(rtsp_port: int = 7236, available: bool = True, dual_role: bool = False) -> bytes:
+    """WFD Device Information subelement, as wpa_supplicant's WFDIEs property expects (id, len, data).
+    dual_role (passthrough, M10): we also send, so a TV takes us as its source while Win + K
+    still lists us as a display."""
     flags = WFD_PRIMARY_SINK_AVAILABLE if available else WFD_PRIMARY_SINK_AVAILABLE & ~0x0030
+    if dual_role:
+        flags = (flags & ~0x0003) | WFD_DUAL_ROLE
     info = struct.pack(">HHH", flags, rtsp_port, WFD_MAX_THROUGHPUT_MBPS)
     return struct.pack(">BH", 0, len(info)) + info
 
@@ -106,6 +114,19 @@ def wsc_ie(attributes: bytes) -> bytes:
     if len(data) > 255:
         raise ValueError("WSC IE too long")
     return bytes([0xDD, len(data)]) + data
+
+
+def wfd_device_info(ies: bytes) -> tuple[int, int] | None:
+    """(device type, session available) from a peer's WFD subelements, or None."""
+    i = 0
+    while i + 3 <= len(ies):
+        sid, ln = ies[i], struct.unpack_from(">H", ies, i + 1)[0]
+        val = ies[i + 3:i + 3 + ln]
+        if sid == 0 and ln >= 2:
+            flags = struct.unpack_from(">H", val, 0)[0]
+            return flags & 0x0003, int((flags >> 4) & 0x0003 == 1)
+        i += 3 + ln
+    return None
 
 
 def parse_wfd_rtsp_port(ies: bytes) -> int | None:

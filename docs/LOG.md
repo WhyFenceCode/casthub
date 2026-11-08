@@ -376,3 +376,26 @@ heading for offices and lecture halls. Owner has a Miracast TV/projector; nothin
   after it. (A first stand-in TV saw nothing: it had no queues after tsdemux; the stream was fine.)
 - Next: the TV process (sender + inputs, driven by the hub) and stage 3, finding and joining the
   TV over Wi-Fi Direct, which needs the owner's TV.
+
+## M10 passthrough, stages 3-4: the TV link, setup and screens, 2026-11-08
+
+- `media/tvproc.py`: one TV process for the whole passthrough session (sender + the current
+  cast's input; the inter elements only work inside one process). `TvInput` looks like a player
+  to the receiver; a Windows cast replaces a waiting AirPlay input, which is set up again after.
+- Receivers: `set_tv()` sends casts to the TV process (AirPlay picture and sound in one input),
+  no windows placed; `tv` tells each screen where its casts go.
+- casthub-p2p TV mode: searches for Miracast displays (WFD sinks; PCs, which are sources, are
+  left out), joins the chosen one as group owner (never as client: the firmware crash),
+  advertises dual-role so Win + K still lists us, pauses the hotspot, refuses PC pairing, and
+  reports the TV's address. The casthub-p2p zone opens TCP 7236 for the TV's RTSP.
+- `hub/passthrough.py`: tv_on → our Miracast source on 7236 → the TV's handshake picks the mode
+  → TV process → receivers. A lost TV is joined again while wanted. `[passthrough] mode =
+  user | fixed | off` (+ `target`); fixed (an admin's TV) starts at hub start and locks the choice.
+  The hub's control socket (`$XDG_RUNTIME_DIR/casthub-hub.sock`) takes the leave page's commands.
+- Screens: "Passthrough setup" on the leave page opens a second view ("To a TV": displays found,
+  search again, turn off; four rows like the main choices, Esc goes back). During a cast to the
+  TV each screen shows the sender's name and "On <TV>" instead of the video.
+- Checked on this machine end to end: the controller, our source on 7236, our own sink as the TV
+  (1080p30 + AAC negotiated), the TV process with a test cast: 94 frames + audio in 3 s, then off
+  with a clean teardown. Previews (local) light and dark. Tests for each part.
+- Live test pending (owner): search finds the TV, it joins, a Windows and an iPhone cast show on it.

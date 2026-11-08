@@ -30,6 +30,14 @@ share_internet = false           # true: hotspot devices get internet through ou
 ssid = "<ssid>"                  # optional; default a fresh "Cast Hub XXXX" each start
 # The password is new each time the hotspot starts; the QR code on screen carries it.
 
+[passthrough]
+# Send every cast on to a Miracast TV or projector (Cast Hub's screens then show "Sending to ...").
+# While it's on, the TV link uses the radio: no hotspot, and senders use the normal network.
+mode = "user"                    # user: pick a TV under "Passthrough setup" (Ctrl + Alt + Esc)
+                                 # fixed: always send to `target` (set by an admin; no on-screen choice)
+                                 # off: no passthrough
+target = "<tv-name>"             # the TV's name as it shows in Miracast lists (fixed mode)
+
 [switcher]
 # Set with `casthub-pin` (writes pin_hash only; a plain `pin` here is refused).
 pin_hash = ""

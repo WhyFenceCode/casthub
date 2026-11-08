@@ -72,6 +72,10 @@ casthub-p2p disconnected our Wi-Fi to run the hotspot alone; it reconnects when 
 If the service died first: `sudo iw dev casthub-ap del`, then `nmcli device connect <wifi-device>`.
 To turn the hotspot off: `[hotspot] mode = "off"` in `/etc/casthub/casthub.toml`.
 
+Passthrough (M10) stuck on, or a TV that keeps joining: Ctrl + Alt + Esc › Passthrough setup ›
+Turn off. In fixed mode set `[passthrough] mode = "user"` (or `"off"`) in casthub.toml and
+restart Display mode. Stopping casthub-p2p also ends the TV link and gives the radio back.
+
 ```sh
 sudo systemctl disable --now casthub-p2p.service
 sudo rm /etc/firewalld/zones/casthub-hotspot.xml /etc/firewalld/policies/casthub-share.xml

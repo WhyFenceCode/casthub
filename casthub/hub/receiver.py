@@ -67,6 +67,9 @@ class Receiver:
         self.ended_task: asyncio.Task | None = None
         self.mice_port, self.rtp_port, self.busy_policy = mice_port, rtp_port, busy_policy
         self.notify, self.pipeline_factory = notify, pipeline_factory
+        # Passthrough (M10): casts play to the TV process (media/tvproc.py) instead of our screens.
+        self.tv = None
+        self.tv_name = ""
         self.state = "idle"
         self.current: Source | None = None
         self.task: asyncio.Task | None = None
@@ -91,13 +94,34 @@ class Receiver:
             self.standby.stop()
             self.standby = None
 
+    def factory(self, spec: media.MediaSpec, on_first_frame, on_error):
+        """A player for our screens, or, during passthrough, an input of the TV process."""
+        if self.tv is not None:
+            return self.tv.input(spec, on_first_frame, on_error)
+        return self.pipeline_factory(spec, on_first_frame, on_error)
+
+    async def set_tv(self, tv, name: str = "") -> None:
+        """Passthrough on (a TvProcess) or off (None). A waiting AirPlay player belongs to the old
+        destination, so it is replaced."""
+        self.tv, self.tv_name = tv, name if tv else ""
+        if self.standby:
+            self.standby.stop()
+            self.standby = None
+        await self.tell({"cmd": "tv", "name": self.tv_name})
+        asyncio.ensure_future(self.prepare_airplay())
+
+    async def _place(self, pipe) -> None:
+        if self.tv is None:                 # TV only: no windows here
+            await media.place_on_outputs(self.outputs, getattr(pipe, "pid", None))
+
     def _airplay_spec(self, audio_only: bool = False) -> media.MediaSpec:
         """AirPlay video (no audio: it waits, listening, while idle) or audio only (started with
         the cast; an idle audio stream held PipeWire's speakers suspended, so Windows casts were
         silent)."""
         video, audio = self.airplay_ports
+        # To the TV, picture and sound go in one input (no speakers to hold suspended).
         spec = media.default_spec(video, f"Cast Hub {self.name}", self.output, self.mirrors,
-                                  source="airplay", audio_port=audio if audio_only else 0)
+                                  source="airplay", audio_port=audio if audio_only or self.tv else 0)
         return dataclasses.replace(spec, video=False) if audio_only else spec
 
     async def prepare_airplay(self) -> None:
@@ -117,7 +141,7 @@ class Receiver:
             elif self.standby is pipe:          # died while waiting: start another next time
                 log.warning("%s: AirPlay standby player: %s", self.name, text)
                 self.standby = None
-        pipe = self.pipeline_factory(self._airplay_spec(), first, error)
+        pipe = self.factory(self._airplay_spec(), first, error)
         try:
             await pipe.start()
         except Exception as e:  # noqa: BLE001 (the cast then starts its own player)
@@ -228,14 +252,14 @@ class Receiver:
     # ---- one projection -------------------------------------------------------------
     async def _start_player(self, spec: media.MediaSpec, first_frame: asyncio.Event,
                             on_error: Callable[[str], object]) -> player.PlayerProcess:
-        pipe = self.pipeline_factory(spec, first_frame.set, on_error)
+        pipe = self.factory(spec, first_frame.set, on_error)
         try:
             await pipe.start()
         except RuntimeError as e:
             # Seen once with a real PC, not reproducible since: retry, then fall back to software decoding.
             log.warning("%s: %s; retrying with %s", self.name, e, "avdec_h264")
             await asyncio.sleep(0.5)
-            pipe = self.pipeline_factory(dataclasses.replace(spec, decoder="avdec_h264"), first_frame.set, on_error)
+            pipe = self.factory(dataclasses.replace(spec, decoder="avdec_h264"), first_frame.set, on_error)
             await pipe.start()
         return pipe
 
@@ -274,7 +298,7 @@ class Receiver:
             else:
                 log.warning("%s: no AirPlay player was ready; the picture may not appear", self.name)
                 pipe = await self._start_player(self._airplay_spec(), first_frame, on_error)
-            if self.airplay_ports[1]:
+            if self.airplay_ports[1] and self.tv is None:
                 sound = self.pipeline_factory(self._airplay_spec(audio_only=True), lambda: None,
                                               lambda e: log.warning("%s: AirPlay audio: %s", self.name, e))
                 try:
@@ -286,7 +310,7 @@ class Receiver:
 
             async def frame_watch():
                 await first_frame.wait()
-                await media.place_on_outputs(self.outputs, getattr(pipe, "pid", None))
+                await self._place(pipe)
                 await self.set_state("streaming", src.name)
 
             watch = asyncio.create_task(frame_watch())
@@ -320,6 +344,9 @@ class Receiver:
                     self.size = await self.size_now(self.output) or self.size
             sink = RtspSink(src.addr, src.rtsp_port, SinkCaps(self.size[0], self.size[1], self.rtp_port, self.name))
             await self.set_state("connecting", src.name)
+            if self.tv is not None and self.standby:     # one input at a time in the TV process
+                self.standby.stop()
+                self.standby = None
             spec = media.default_spec(self.rtp_port, f"Cast Hub {self.name}", self.output, self.mirrors)
             pipe = await self._start_player(spec, first_frame,
                                             lambda e: failed.done() or failed.set_result(e))
@@ -332,7 +359,7 @@ class Receiver:
                 except TimeoutError:
                     await sink.request_idr()
                     await first_frame.wait()
-                await media.place_on_outputs(self.outputs, getattr(pipe, "pid", None))
+                await self._place(pipe)
                 await self.set_state("streaming", src.name)
 
             async def link_watch() -> str:

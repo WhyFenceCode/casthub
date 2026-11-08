@@ -126,13 +126,21 @@ class TestApp(unittest.TestCase):
         chosen = []
         root.leaveChosen.connect(chosen.append)
         ui.on_action = lambda r, a: chosen.append(("ran", a))   # don't actually reboot the test machine
-        # Passthrough setup is listed but not built yet: Enter only explains that.
+        # Passthrough setup: its own view, which starts a search for displays; Esc goes back.
         QTest.keyClick(view, Qt.Key.Key_Return)
-        self.assertEqual(chosen, [])
-        self.assertNotEqual(page.property("error"), "")
+        self.assertEqual(page.property("view"), "passthrough")
+        self.assertIn(("ran", "tv_find"), chosen)
+        ui.handle({"cmd": "passthrough", "state": "off", "tv": "", "why": "", "tvs": ["<tv>"],
+                   "locked": False, "allowed": True})
+        qapp.processEvents()
+        self.assertEqual(page.property("actions").toVariant()[0]["id"], "tv_on:<tv>")
+        QTest.keyClick(view, Qt.Key.Key_Return)
+        self.assertIn(("ran", "tv_on:<tv>"), chosen)
+        QTest.keyClick(view, Qt.Key.Key_Escape)
+        self.assertEqual((page.property("view"), page.property("selected")), ("main", 1))
         QTest.keyClick(view, Qt.Key.Key_Down)
         QTest.keyClick(view, Qt.Key.Key_Return)
-        self.assertIn("reboot", chosen)
+        self.assertIn(("ran", "reboot"), chosen)
         QTest.keyClick(view, Qt.Key.Key_Escape)
         self.assertFalse(root.property("leaveOpen"))
         for v in ui.views.values():

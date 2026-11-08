@@ -17,6 +17,7 @@ LAYOUTS = ("mirror_all",)
 OLD_LAYOUTS = ("per_screen", "per_radio")
 THEMES = ("auto", "light", "dark")
 HOTSPOT_MODES = ("auto", "always", "off")
+PASSTHROUGH_MODES = ("user", "fixed", "off")
 
 
 class ConfigError(ValueError):
@@ -43,6 +44,8 @@ class Config:
     hotspot_mode: str = "always"        # auto (only when the network blocks casts) | always | off
     hotspot_share: bool = False         # hotspot devices get internet through our Wi-Fi (NAT)
     hotspot_ssid: str = ""              # "" = a fresh "Cast Hub XXXX" each time it starts
+    passthrough_mode: str = "user"      # user (pick a TV on the leave page) | fixed (always the target) | off
+    passthrough_target: str = ""        # the TV's Miracast name: fixed mode's target
     pin_hash: str = ""
     theme: str = "auto"                 # Display screens: auto (by time of day) | light | dark
     location: str = ""                  # shown on the idle screen, e.g. "<city>, <region>"
@@ -84,6 +87,7 @@ def parse(data: dict) -> Config:
     brand, layout = data.get("brand", {}), data.get("layout", {})
     mc, ap, hs = data.get("miracast", {}), data.get("airplay", {}), data.get("hotspot", {})
     sw, disp = data.get("switcher", {}), data.get("display", {})
+    pt = data.get("passthrough", {})
     d = Config()
 
     mode = _get(layout, "mode", str, d.layout)
@@ -122,6 +126,14 @@ def parse(data: dict) -> Config:
         ssid = ""
     if len(ssid.encode()) > 32:
         raise ConfigError("hotspot.ssid is longer than 32 bytes")
+    pt_mode = _get(pt, "mode", str, d.passthrough_mode)
+    if pt_mode not in PASSTHROUGH_MODES:
+        raise ConfigError(f"passthrough.mode must be one of {PASSTHROUGH_MODES}, got {pt_mode!r}")
+    pt_target = _get(pt, "target", str, d.passthrough_target)
+    if pt_target.startswith("<"):        # the example's placeholder
+        pt_target = ""
+    if pt_mode == "fixed" and not pt_target:
+        raise ConfigError("passthrough.mode = fixed needs a target (the TV's name)")
     if _get(sw, "pin", str, ""):
         raise ConfigError("switcher.pin is plain text; set it with `casthub-pin` so only pin_hash is stored")
     lat = _get(disp, "latitude", (int, float), None)
@@ -148,6 +160,8 @@ def parse(data: dict) -> Config:
         hotspot_mode=hs_mode,
         hotspot_share=_get(hs, "share_internet", bool, d.hotspot_share),
         hotspot_ssid=ssid,
+        passthrough_mode=pt_mode,
+        passthrough_target=pt_target,
         pin_hash=_get(sw, "pin_hash", str, d.pin_hash),
         theme=theme,
         location=_get(disp, "location", str, d.location),

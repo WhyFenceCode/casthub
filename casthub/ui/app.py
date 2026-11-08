@@ -36,6 +36,7 @@ log = logging.getLogger("casthub.ui")
 # The bar's battery level (uikit/Battery.qml) reads /sys/class/power_supply with XMLHttpRequest.
 os.environ.setdefault("QML_XHR_ALLOW_FILE_READ", "1")
 QML = Path(__file__).resolve().parent / "qml" / "DisplayScreen.qml"
+HUB_SOCK = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "casthub-hub.sock"     # the hub's control socket
 QR_FILE = Path("/run/casthub/hotspot-qr.txt")      # written by the hotspot service (root); holds the join code
 LEAVE = "/usr/libexec/casthub/casthub-leave"
 PANEL_CLOSE = "/usr/libexec/casthub/casthub-panel-close"
@@ -91,6 +92,8 @@ class DisplayUI(QObject):
         self.views: dict[str, QQuickView] = {}
         self.names: dict[str, str] = {}             # output → the hub's receiver name
         self.routes: dict[str, str] = {}            # output → how senders reach the hub
+        self.tvs: dict[str, str] = {}               # output → the TV its casts go to (passthrough)
+        self.passthrough: dict = {}
         self.qr = ""
         for s in app.screens():
             self.add_screen(s)
@@ -125,6 +128,7 @@ class DisplayUI(QObject):
             # cast); until then "" and the screen says Loading.
             "receiverName": self.names.get(screen.name(), ""),
             "route": self.routes.get(screen.name(), ""),
+            "tvName": self.tvs.get(screen.name(), ""),
             "location": self.cfg.location,
             "coordinates": self.cfg.coordinates(),
             "airplay": self.cfg.airplay,
@@ -136,6 +140,8 @@ class DisplayUI(QObject):
         }
         for k, val in props.items():
             root.setProperty(k, val)
+        if self.passthrough:
+            root.setProperty("passthrough", self.passthrough)
         root.leaveChosen.connect(lambda action, r=root: self.on_action(r, action))
         root.leaveCancelled.connect(lambda r=root: r.setProperty("leaveOpen", False))
         v.showFullScreen()
@@ -182,6 +188,9 @@ class DisplayUI(QObject):
             target.requestActivate()
 
     def on_action(self, root, action: str) -> None:
+        if action.startswith("tv_"):                     # passthrough setup (leave page)
+            self.passthrough_action(action)
+            return
         cmd = ACTIONS.get(action)
         if not cmd:
             return
@@ -190,6 +199,48 @@ class DisplayUI(QObject):
         if r.returncode != 0:
             log.error("%s failed: %s", action, r.stderr.strip())
             root.setProperty("leaveOpen", False)
+
+    # ---- passthrough setup: the hub's control socket ---------------------------------
+    def passthrough_action(self, action: str) -> None:
+        name = action.partition(":")[2]
+        cmd = {"tv_find": {"cmd": "tv_find"}, "tv_off": {"cmd": "tv_off"}}.get(action) or {"cmd": "tv_on", "name": name}
+        if cmd["cmd"] == "tv_find":
+            self.set_all("searching", True)
+        log.info("passthrough: %s", cmd["cmd"])
+
+        def done(reply: dict) -> None:
+            if cmd["cmd"] == "tv_find":
+                self.set_all("searching", False)
+            if not reply.get("ok", False):
+                log.warning("passthrough: %s", reply.get("error", "no answer from the hub"))
+        self.hub_request(cmd, done)
+
+    def hub_request(self, msg: dict, done) -> None:
+        """One request to the hub (casthub-hub.sock); `done(reply)` once, never blocking the UI."""
+        sock = QLocalSocket(self)
+        state = {"done": False}
+
+        def finish(reply: dict) -> None:
+            if not state["done"]:
+                state["done"] = True
+                done(reply)
+                sock.abort()
+                sock.deleteLater()
+
+        def ready() -> None:
+            if sock.canReadLine():
+                try:
+                    finish(json.loads(bytes(sock.readLine()).decode(errors="replace")))
+                except ValueError:
+                    finish({"ok": False, "error": "bad reply"})
+        sock.connected.connect(lambda: sock.write(json.dumps(msg).encode() + b"\n"))
+        sock.readyRead.connect(ready)
+        sock.errorOccurred.connect(lambda _e: finish({"ok": False, "error": sock.errorString()}))
+        sock.connectToServer(str(HUB_SOCK))
+
+    def set_all(self, prop: str, value) -> None:
+        for r in self.roots():
+            r.setProperty(prop, value)
 
     # ---- control socket ---------------------------------------------------------
     def on_connection(self) -> None:
@@ -214,6 +265,17 @@ class DisplayUI(QObject):
                 subprocess.Popen([PANEL_CLOSE])
             else:
                 self.open_leave()
+        elif cmd == "passthrough":                      # the hub's passthrough status, every screen
+            status = {k: msg.get(k) for k in ("state", "tv", "why", "tvs", "locked", "allowed")}
+            status["tvs"] = [str(t) for t in status.get("tvs") or []]
+            self.passthrough = status
+            self.set_all("passthrough", status)
+        elif cmd == "tv":                               # this screen's casts go to that TV ("" = ours)
+            v = self.views.get(msg["output"])
+            if v is None:
+                raise KeyError(f"no screen {msg['output']!r}")
+            self.tvs[msg["output"]] = str(msg.get("name", ""))
+            v.rootObject().setProperty("tvName", self.tvs[msg["output"]])
         elif cmd in ("state", "busy", "pin"):
             if cmd == "state" and "name" in msg:     # kept even before the screen's view exists
                 self.names[msg["output"]] = str(msg["name"])

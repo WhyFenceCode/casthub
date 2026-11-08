@@ -22,6 +22,12 @@ Rectangle {
     property string route: ""               // network | hotspot | hotspot-alone; "" while the hub decides
     readonly property bool hotspotOn: qrPayload !== "" && route.indexOf("hotspot") === 0
     property string theme: "auto"           // auto | light | dark
+    // Passthrough (M10): casts go to this TV, not our screens ("" = off). Then this screen
+    // stays on the page and says where the cast is.
+    property string tvName: ""
+    property var passthrough: ({ state: "off", tv: "", why: "", tvs: [], locked: false, allowed: true })
+    property bool searching: false
+    readonly property bool onTv: tvName !== "" && screenState === "streaming"
 
     // ---- leave page (Ctrl+Alt+Esc), drawn on top of this screen ----------------
     property bool leaveOpen: false
@@ -63,7 +69,7 @@ Rectangle {
     readonly property real hair: Math.max(1, Math.round(u))
 
     Tokens { id: t; dark: root.dark }
-    color: root.screenState === "streaming" ? "black" : t.bg
+    color: root.screenState === "streaming" && !root.onTv ? "black" : t.bg
     Behavior on color { ColorAnimation { duration: t.motionNormal } }
 
     function pad(n) { return n < 10 ? "0" + n : "" + n }
@@ -75,7 +81,7 @@ Rectangle {
     Item {
         id: page
         anchors.fill: parent
-        visible: root.screenState !== "streaming"
+        visible: root.screenState !== "streaming" || root.onTv
 
         GridLines { u: root.fu; tok: t; margin: root.margin; gutter: root.gutter }
 
@@ -96,7 +102,7 @@ Rectangle {
             width: root.colX(8) - x
             u: root.u; tok: t; textStyle: t.dclock
             text: root.pinCode ? root.pinCode.replace(/^(\d{4})(\d{4})$/, "$1 $2")
-                  : root.screenState === "connecting" && root.deviceName
+                  : (root.screenState === "connecting" || root.onTv) && root.deviceName
                   ? root.deviceName : root.pad(root.clockNow.getHours()) + ":" + root.pad(root.clockNow.getMinutes())
             fontSizeMode: Text.HorizontalFit
             minimumPixelSize: 40 * root.u
@@ -111,6 +117,7 @@ Rectangle {
             color: root.pinCode || root.loading ? t.muted : t.fg
             textFormat: Text.StyledText
             text: root.pinCode ? "Type this PIN on your PC"
+                  : root.onTv ? "On " + root.tvName
                   : root.screenState === "connecting" ? root.dotted("Connecting", true)
                   : root.receiverName || root.dotted("Loading", true)   // the name to pick in Win + K / Screen Mirroring
         }
@@ -125,7 +132,7 @@ Rectangle {
 
         // Status, bottom left.
         Item {
-            readonly property bool active: root.screenState === "connecting" || root.pinCode !== ""
+            readonly property bool active: root.screenState === "connecting" || root.pinCode !== "" || root.onTv
             id: status
             x: root.margin; y: 499 * root.uy
             Rectangle {
@@ -146,8 +153,10 @@ Rectangle {
                 x: 17 * root.ux; anchors.verticalCenter: parent.top
                 u: root.u; tok: t; textStyle: t.dlabel
                 textFormat: Text.StyledText
-                text: root.pinCode ? "Pairing" : root.screenState === "connecting" ? root.dotted("Connecting")
-                      : root.receiverName ? "Waiting for a device" : root.dotted("Getting ready")
+                text: root.pinCode ? "Pairing" : root.onTv ? "Showing on the TV"
+                      : root.screenState === "connecting" ? root.dotted("Connecting")
+                      : !root.receiverName ? root.dotted("Getting ready")
+                      : root.tvName ? "Casts go to " + root.tvName : "Waiting for a device"
             }
             Label {
                 y: 24 * root.uy - height / 2
@@ -260,6 +269,8 @@ Rectangle {
             item.receiverName = Qt.binding(function () { return root.receiverName })
             item.theme = Qt.binding(function () { return root.theme })
             item.fixedNow = root.fixedNow
+            item.passthrough = Qt.binding(function () { return root.passthrough })
+            item.searching = Qt.binding(function () { return root.searching })
             item.forceActiveFocus()
         }
         Connections {
