@@ -58,6 +58,7 @@ class MediaSpec:
     capture: str = ""               # also write the PC's MPEG-TS to this file (debugging; keep it in local/)
     source: str = "miracast"        # miracast (MPEG-TS over RTP) | airplay (H.264 + L16 RTP from UxPlay)
     audio_port: int = 0             # airplay: the L16 RTP port (0 = no audio)
+    video: bool = True              # airplay: False = audio only (its own player, see receiver.run_airplay)
 
 
 STATS_S = 5
@@ -114,8 +115,8 @@ def describe(spec: MediaSpec) -> str:
         # tsdemux feeds audio and video from one thread: if audio backs up, video stops too
         # (the picture froze after 2 frames). So audio never waits on the PC's timestamps, and
         # its queue drops old audio rather than block the demuxer.
-        desc += (f" demux. ! audio/mpeg ! queue name=aq leaky=downstream max-size-time=500000000 ! aacparse ! avdec_aac"
-                 f" ! audioconvert ! audioresample ! {spec.audio_sink} name=asink sync=false async=false")
+        desc += (f" demux. ! audio/mpeg ! queue name=aq leaky=downstream max-size-time=500000000 ! aacparse ! avdec_aac name=adec"
+                 f" ! audioconvert ! audioresample ! {AUDIO_OUT} ! {spec.audio_sink} name=asink sync=false async=false")
     if spec.capture:   # the stream exactly as the PC sent it, to replay with filesrc ! tsdemux
         desc += f' cap. ! queue leaky=downstream ! filesink location="{spec.capture}" sync=false async=false'
     return desc
@@ -128,17 +129,28 @@ AIRPLAY_AUDIO_CAPS = "application/x-rtp,media=audio,clock-rate=44100,encoding-na
 
 def _describe_airplay(spec: MediaSpec, video: str) -> str:
     """UxPlay's RTP on localhost. The element names match the Miracast pipeline, so the stage
-    counters and first-frame probe work the same."""
-    desc = (f'udpsrc name=src address=127.0.0.1 port={spec.rtp_port} buffer-size=2097152 caps="{AIRPLAY_VIDEO_CAPS}"'
-            f" ! rtpjitterbuffer name=jb latency={spec.latency_ms} ! rtph264depay name=depay"
-            " ! queue name=vq max-size-time=0 max-size-bytes=0 max-size-buffers=64 ! h264parse name=vparse"
-            f" ! {spec.decoder}{video}")
+    counters and first-frame probe work the same. Video and audio play in separate players:
+    the video one waits, listening, while the receiver is idle, and an idle audio stream would
+    hold PipeWire's speaker output suspended (Windows casts were silent)."""
+    desc = ""
+    if spec.video:
+        desc = (f'udpsrc name=src address=127.0.0.1 port={spec.rtp_port} buffer-size=2097152'
+                f' caps="{AIRPLAY_VIDEO_CAPS}" ! rtpjitterbuffer name=jb latency={spec.latency_ms}'
+                " ! rtph264depay name=depay ! queue name=vq max-size-time=0 max-size-bytes=0 max-size-buffers=64"
+                f" ! h264parse name=vparse ! {spec.decoder}{video}")
     if spec.audio and spec.audio_port:
-        desc += (f' udpsrc address=127.0.0.1 port={spec.audio_port} caps="{AIRPLAY_AUDIO_CAPS}"'
+        desc += (f' udpsrc name={"src" if not spec.video else "asrc"} address=127.0.0.1 port={spec.audio_port}'
+                 f' caps="{AIRPLAY_AUDIO_CAPS}"'
                  f" ! rtpjitterbuffer latency={spec.latency_ms} ! rtpL16depay"
                  " ! queue name=aq leaky=downstream max-size-time=500000000 ! audioconvert ! audioresample"
-                 f" ! {spec.audio_sink} name=asink sync=false async=false")
+                 f" ! {AUDIO_OUT} ! {spec.audio_sink} name=asink sync=false async=false")
     return desc
+
+
+# What the speakers get. pipewiresink takes any raw format and passes it on: with Windows'
+# audio it offered PipeWire "F32LE, 1 Hz, mono", which PipeWire never linked (no sound, the
+# stream stuck in init). A fixed format, resampled to, always links.
+AUDIO_OUT = "audio/x-raw,rate=48000,channels=2"
 
 
 def available(*names: str) -> list[str]:
@@ -157,6 +169,7 @@ class Pipeline:
         self._seen_frame = False
         self.counts = dict.fromkeys([name for name, _, _ in STAGES], 0)   # bumped on streaming threads
         self.caps_logged = False
+        self.audio_caps_logged = False
         self.last_packet = 0.0                 # monotonic time of the last RTP packet (0 = none yet)
 
     def start(self) -> None:
@@ -185,7 +198,9 @@ class Pipeline:
             return probe
 
         # Every stage counts what passes it, so a frozen picture shows where data stops.
-        self.pipe.get_by_name("vsink").get_static_pad("sink").add_probe(g.PadProbeType.BUFFER, shown)
+        vsink = self.pipe.get_by_name("vsink")
+        if vsink is not None:                      # an audio-only player has none
+            vsink.get_static_pad("sink").add_probe(g.PadProbeType.BUFFER, shown)
         for stage, element, pad in STAGES:
             el = self.pipe.get_by_name(element)
             if el is not None and stage != "shown":
@@ -229,7 +244,13 @@ class Pipeline:
                 if now != last:            # quiet while an AirPlay standby player waits
                     log.info("media in the last %d s: %s | jitterbuffer %s", STATS_S,
                              ", ".join(f"{k} {now[k] - last.get(k, 0)}" for k in now), self.jitter_stats())
-                if not self.caps_logged and now["parsed"]:
+                if not self.audio_caps_logged and now["audio-out"]:
+                    self.audio_caps_logged = True
+                    adec = self.pipe.get_by_name("adec")
+                    caps = adec.get_static_pad("src").get_current_caps() if adec else None
+                    log.info("decoded audio (before resampling to %s): %s", AUDIO_OUT,
+                             caps.to_string() if caps else "?")
+                if not self.caps_logged and now["parsed"] and self.pipe.get_by_name("vparse"):
                     self.caps_logged = True
                     caps = self.pipe.get_by_name("vparse").get_static_pad("src").get_current_caps()
                     log.info("video caps: %s", caps.to_string() if caps else "?")

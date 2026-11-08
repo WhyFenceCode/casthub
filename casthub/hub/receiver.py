@@ -88,10 +88,14 @@ class Receiver:
             self.standby.stop()
             self.standby = None
 
-    def _airplay_spec(self) -> media.MediaSpec:
+    def _airplay_spec(self, audio_only: bool = False) -> media.MediaSpec:
+        """AirPlay video (no audio: it waits, listening, while idle) or audio only (started with
+        the cast; an idle audio stream held PipeWire's speakers suspended, so Windows casts were
+        silent)."""
         video, audio = self.airplay_ports
-        return media.default_spec(video, f"Cast Hub {self.name}", self.output, self.mirrors,
-                                  source="airplay", audio_port=audio)
+        spec = media.default_spec(video, f"Cast Hub {self.name}", self.output, self.mirrors,
+                                  source="airplay", audio_port=audio if audio_only else 0)
+        return dataclasses.replace(spec, video=False) if audio_only else spec
 
     async def prepare_airplay(self) -> None:
         """Have a player listening for UxPlay's RTP before an iPhone starts mirroring."""
@@ -242,7 +246,7 @@ class Receiver:
         notices a lost iPhone itself (-reset)."""
         loop = asyncio.get_running_loop()
         first_frame, failed = asyncio.Event(), loop.create_future()
-        pipe = None
+        pipe = sound = None
         try:
             if self.size_now:
                 with contextlib.suppress(Exception):
@@ -258,6 +262,14 @@ class Receiver:
             else:
                 log.warning("%s: no AirPlay player was ready; the picture may not appear", self.name)
                 pipe = await self._start_player(self._airplay_spec(), first_frame, on_error)
+            if self.airplay_ports[1]:
+                sound = self.pipeline_factory(self._airplay_spec(audio_only=True), lambda: None,
+                                              lambda e: log.warning("%s: AirPlay audio: %s", self.name, e))
+                try:
+                    await sound.start()
+                except Exception as e:  # noqa: BLE001 (the picture goes on without sound)
+                    log.warning("%s: AirPlay audio did not start: %s", self.name, e)
+                    sound = None
             log.info("%s: AirPlay from %r", self.name, src.name)
 
             async def frame_watch():
@@ -277,6 +289,8 @@ class Receiver:
             log.exception("%s: AirPlay stream failed", self.name)
         finally:
             self.standby_first = self.standby_error = None
+            if sound:
+                sound.stop()
             if pipe:
                 pipe.stop()
             await self._finish(src)

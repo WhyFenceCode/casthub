@@ -333,6 +333,14 @@ class TestPipelineDescription(unittest.TestCase):
             self.assertIn("sync=false", sink)
         self.assertIn("leaky=downstream", desc)        # audio can't back up into the demuxer
 
+    def test_speakers_get_a_fixed_format(self):
+        """Windows' audio reached pipewiresink as "F32LE, 1 Hz, mono", which PipeWire never
+        linked: both paths resample to a fixed format right before the sink."""
+        for spec in (media.default_spec(1028, "t", "OUT-1"),
+                     media.default_spec(1032, "t", "OUT-1", source="airplay", audio_port=1034)):
+            desc = media.describe(spec)
+            self.assertIn(f"audioresample ! {media.AUDIO_OUT} ! pipewiresink", desc)
+
 
 class TestMirrorAll(unittest.TestCase):
     """M4: Windows lists one receiver per radio, so every screen mirrors one receiver."""
@@ -450,6 +458,12 @@ class TestAirPlay(unittest.TestCase):
         self.assertNotIn("tsdemux", desc)
         silent = media.describe(media.default_spec(1032, "t", source="airplay"))
         self.assertNotIn("rtpL16depay", silent)          # no audio port: no audio branch
+        import dataclasses
+        sound = media.describe(dataclasses.replace(
+            media.default_spec(1032, "t", source="airplay", audio_port=1034), video=False))
+        self.assertIn("rtpL16depay", sound)
+        self.assertNotIn("rtph264depay", sound)
+        self.assertNotIn("glimagesink", sound)
 
     def test_cast_through_uxplay(self):
         import os
@@ -482,7 +496,7 @@ class TestAirPlay(unittest.TestCase):
         self.assertIn(("connecting", "<iphone> Phone"), states)
         self.assertIn(("streaming", "<iphone> Phone"), states)
         self.assertEqual(states[-1], ("idle", ""))
-        self.assertEqual((spec.source, spec.rtp_port, spec.audio_port), ("airplay", 1032, 1034))
+        self.assertEqual((spec.source, spec.rtp_port, spec.audio_port, spec.video), ("airplay", 1032, 1034, False))
 
     def test_standby_player_catches_the_stream_start(self):
         """An iPhone sends SPS/PPS and its only keyframe as mirroring starts: the player must
@@ -516,9 +530,13 @@ class TestAirPlay(unittest.TestCase):
         self.assertEqual(streaming, "streaming")
         self.assertIs(pipes[0], standby)               # the cast played on the standby player
         self.assertTrue(standby.stopped)
-        self.assertEqual(len(pipes), 2)                # and a fresh one waits for the next iPhone
-        self.assertIs(rec.standby, pipes[1])
-        self.assertEqual(pipes[1].spec.source, "airplay")
+        self.assertEqual((standby.spec.video, standby.spec.audio_port), (True, 0))    # no idle audio stream
+        sound = pipes[1]                               # the sound: its own player, for the cast only
+        self.assertEqual((sound.spec.video, sound.spec.audio_port), (False, 1034))
+        self.assertTrue(sound.stopped)
+        self.assertEqual(len(pipes), 3)                # and a fresh one waits for the next iPhone
+        self.assertIs(rec.standby, pipes[2])
+        self.assertEqual(pipes[2].spec.audio_port, 0)
 
     def test_hub_tells_wifi_direct_when_casting(self):
         from types import SimpleNamespace

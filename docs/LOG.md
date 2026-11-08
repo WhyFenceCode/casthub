@@ -260,10 +260,18 @@ Owner had installed UxPlay 1.73.7 (Fedora package); nothing else done. Test devi
 - Accepted by the owner: an iPhone mirrors to the hub (picture on screen, Win + K drops the hub
   during the cast, Stop Mirroring returns it to waiting under a new name). M5 done.
 
-## Open: Windows audio over Miracast, 2026-11-08
+## Fixed: Windows audio over Miracast, 2026-11-08
 
 Owner: no sound from a Windows cast. The hub negotiates AAC 48 kHz stereo and audio packets
 reach the demuxer (100-240 per 5 s while sound plays). Locally, a test stream with an AAC
 track goes through the same elements to PipeWire, and its stream is linked to the speaker
 output. The player now also counts `audio-out` (audio reaching pipewiresink), so the next
 Windows cast shows where it stops.
+- Live: audio-out counted ~236 per 5 s, but the cast's PipeWire stream stayed in "init" and
+  the speaker output suspended. The only other stream was M5's waiting AirPlay player: linked,
+  silent, holding the speakers suspended. Reproduced locally: a test stream alone runs the
+  speakers; next to an idle L16 stream the speakers stay suspended though the stream "runs".
+- Fix: the waiting AirPlay player is video only (the video is what must listen early, for the
+  iPhone's one keyframe); AirPlay audio gets its own player for the length of the cast. Both
+  paths also resample to a fixed 48 kHz stereo before pipewiresink. Checked headless: idle =
+  no Cast Hub audio stream; AirPlay cast and a Windows-style cast both run the speakers.
