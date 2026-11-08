@@ -129,6 +129,7 @@ class P2PDaemon:
         for frame in (p2p.VENDOR_ELEM_PROBE_RESP_P2P, p2p.VENDOR_ELEM_PROBE_RESP_P2P_GO, p2p.VENDOR_ELEM_BEACON_P2P_GO):
             with contextlib.suppress(RuntimeError):
                 await self.call(self.dev, IFACE, "VendorElemRem", "iay", [frame, old_ie])
+        await self.forget_groups()
         await self.listen()
         with contextlib.suppress(RuntimeError):      # count discovery scans that reach us (diagnostics)
             await self.call(self.dev, IFACE, "SubscribeProbeReq")
@@ -208,7 +209,8 @@ class P2PDaemon:
                    "ProvisionDiscoveryRequestEnterPin": self.on_pd_enter_pin,
                    "GONegotiationFailure": self.on_go_failure,
                    "GroupStarted": self.on_group_started,
-                   "GroupFinished": self.on_group_finished}.get(msg.member)
+                   "GroupFinished": self.on_group_finished,
+                   "InvitationReceived": self.on_invitation}.get(msg.member)
         if msg.member not in ("DeviceFound", "DeviceFoundProperties", "DeviceLost", "FindStopped"):
             log.info("p2p signal %s", msg.member)
         if handler:
@@ -232,6 +234,27 @@ class P2PDaemon:
 
     async def on_go_failure(self, *_):
         log.warning("Wi-Fi Direct group negotiation failed")
+
+    async def forget_groups(self) -> None:
+        """Drop saved (persistent) groups. Windows marks the group it owns as persistent and
+        next time only sends an invitation to it, which NetworkManager can't take: without the
+        saved group the PC pairs afresh."""
+        with contextlib.suppress(RuntimeError):
+            await self.call(self.dev, P2PDEV, "RemoveAllPersistentGroups")
+
+    async def on_invitation(self, props: dict, *_):
+        sa = props.get("sa")
+        if not sa or not self.advertising:
+            return
+        await self.forget_groups()
+        log.info("the PC invited us to an old group; pairing afresh instead")
+        want = bytes(sa.value).hex()
+        with contextlib.suppress(RuntimeError):
+            for peer in await self.get(self.dev, P2PDEV, "Peers"):
+                if peer.rsplit("/", 1)[-1].lower() == want:
+                    await self.pair(peer)
+                    return
+        log.warning("the inviting PC is not in wpa_supplicant's peer list")
 
     async def on_go_request(self, peer: str, *args):
         dev_pw = args[0] if args else p2p.DEV_PW_PUSHBUTTON
@@ -332,6 +355,7 @@ class P2PDaemon:
         self.announced.clear()
         self.peers.clear()
         await self.nmcli("connection", "delete", p2p.NM_PROFILE)
+        await self.forget_groups()
         if self.advertising:          # NM clears the WFD IEs when its P2P connection ends
             with contextlib.suppress(RuntimeError):
                 await self.advertise()
