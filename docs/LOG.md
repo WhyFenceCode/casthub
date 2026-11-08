@@ -275,3 +275,8 @@ Windows cast shows where it stops.
   iPhone's one keyframe); AirPlay audio gets its own player for the length of the cast. Both
   paths also resample to a fixed 48 kHz stereo before pipewiresink. Checked headless: idle =
   no Cast Hub audio stream; AirPlay cast and a Windows-style cast both run the speakers.
+- Owner: with sound back, Windows audio sounded like a cartoon mouse (fast, high). avdec_aac
+  decodes planar (non-interleaved) audio; the pinned format had no layout, so pipewiresink got
+  planar buffers and played them as interleaved: double speed, an octave up. The format now
+  pins `layout=interleaved` (checked: pipewiresink's caps change from non-interleaved to
+  interleaved). Pitch to be confirmed by ear on the next Windows cast.

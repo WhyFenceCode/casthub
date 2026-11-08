@@ -147,10 +147,10 @@ def _describe_airplay(spec: MediaSpec, video: str) -> str:
     return desc
 
 
-# What the speakers get. pipewiresink takes any raw format and passes it on: with Windows'
-# audio it offered PipeWire "F32LE, 1 Hz, mono", which PipeWire never linked (no sound, the
-# stream stuck in init). A fixed format, resampled to, always links.
-AUDIO_OUT = "audio/x-raw,rate=48000,channels=2"
+# What the speakers get: one fixed format, converted to. The layout matters: avdec_aac (Windows'
+# AAC) decodes to non-interleaved (planar) audio, audioconvert passed it through, and
+# pipewiresink played it as interleaved, so each channel ran at twice the speed, an octave up.
+AUDIO_OUT = "audio/x-raw,format=F32LE,layout=interleaved,rate=48000,channels=2"
 
 
 def available(*names: str) -> list[str]:

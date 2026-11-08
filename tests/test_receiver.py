@@ -340,6 +340,8 @@ class TestPipelineDescription(unittest.TestCase):
                      media.default_spec(1032, "t", "OUT-1", source="airplay", audio_port=1034)):
             desc = media.describe(spec)
             self.assertIn(f"audioresample ! {media.AUDIO_OUT} ! pipewiresink", desc)
+        # Windows' AAC decodes planar; pipewiresink played planar as interleaved (double speed).
+        self.assertIn("layout=interleaved", media.AUDIO_OUT)
 
 
 class TestMirrorAll(unittest.TestCase):
