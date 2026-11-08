@@ -38,8 +38,8 @@ Rectangle {
     Timer { interval: 220; running: root.loading; repeat: true; onTriggered: root.dotStep = (root.dotStep + 1) % 5 }
     function dotted(base, spaced) {
         var out = base
-        for (var i = 0; i < 4; i++)         // spaced: thin spaces, the display style's tight tracking joins the dots
-            out += (i && spaced ? "\u2009" : "") + (i === root.dotStep ? "<font color=\"" + t.accent + "\">.</font>" : ".")
+        for (var i = 0; i < 4; i++)         // spaced: thin spaces before each dot, the display style's tight tracking joins them
+            out += (spaced ? "\u2009" : "") + (i === root.dotStep ? "<font color=\"" + t.accent + "\">.</font>" : ".")
         return out
     }
 
