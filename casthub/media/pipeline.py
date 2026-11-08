@@ -65,7 +65,7 @@ PLACE_TRIES = 15                # × 0.2 s
 # (counter, element, pad): network → jitter buffer → RTP unwrap → demuxed video/audio → parsed → shown
 STAGES = [("net", "src", "src"), ("jitter", "jb", "src"), ("rtp-out", "depay", "src"),
           ("video-demuxed", "vq", "sink"), ("audio-demuxed", "aq", "sink"), ("parsed", "vparse", "src"),
-          ("shown", "vsink", "sink")]
+          ("shown", "vsink", "sink"), ("audio-out", "asink", "sink")]
 
 
 def describe(spec: MediaSpec) -> str:

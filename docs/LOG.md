@@ -223,7 +223,7 @@ announced over Wi-Fi Direct) and CAST-6EX4B (7251), both published over mDNS
 - Check: headless Sway with two outputs, a local test stream through the player: one window per
   output, both fullscreen; the player stopped cleanly. M4 done (single only).
 
-## M5: AirPlay (in progress), 2026-11-08
+## M5: AirPlay (done), 2026-11-08
 
 Owner had installed UxPlay 1.73.7 (Fedora package); nothing else done. Test device: iPhone/iPad.
 
@@ -257,3 +257,13 @@ Owner had installed UxPlay 1.73.7 (Fedora package); nothing else done. Test devi
   stops, a new name, UxPlay restarts under it with a new device ID and key (no `-key`, so
   nothing is stored; that also drops the iPhone), a new Wi-Fi Direct address, discoverable
   again. Covered by a test.
+- Accepted by the owner: an iPhone mirrors to the hub (picture on screen, Win + K drops the hub
+  during the cast, Stop Mirroring returns it to waiting under a new name). M5 done.
+
+## Open: Windows audio over Miracast, 2026-11-08
+
+Owner: no sound from a Windows cast. The hub negotiates AAC 48 kHz stereo and audio packets
+reach the demuxer (100-240 per 5 s while sound plays). Locally, a test stream with an AAC
+track goes through the same elements to PipeWire, and its stream is linked to the speaker
+output. The player now also counts `audio-out` (audio reaching pipewiresink), so the next
+Windows cast shows where it stops.
