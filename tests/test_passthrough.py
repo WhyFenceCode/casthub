@@ -237,6 +237,7 @@ class TestP2PTvMode(unittest.TestCase):
                 await d.tv_on("<tv>")
             finally:
                 mod.TV_FIND_S = saved
+            await asyncio.sleep(0)                      # let the deadline task start before cancelling it
             d.pair_watch.cancel()
             await d.pair("/peer/pc")                    # a PC can't pair meanwhile
             d.announce("192.0.2.40", "")
