@@ -5,7 +5,18 @@
 # machine takes casts without leaving the current session. Ctrl+Alt+Esc, or "Close" in the
 # panel's bar, closes the panel and ends any cast (casthub-panel-close). The real Display mode
 # from the login screen is unchanged.
+#
+#   casthub-display [--capture FILE]
+#     --capture FILE  also save the PC's video stream, exactly as received, to FILE (debugging;
+#                     it holds whatever the PC shows, so keep it under local/ and delete it after)
 set -u
+capture=""
+if [ "${1:-}" = --capture ]; then
+  [ -n "${2:-}" ] || { echo "casthub-display: --capture needs a file" >&2; exit 2; }
+  capture=$(realpath -m -- "$2")
+  mkdir -p -- "$(dirname -- "$capture")"
+  shift 2
+fi
 run=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 state="$run/casthub-panel.swaysock"
 
@@ -24,7 +35,11 @@ fi
 rm -f "$state"
 logger -t casthub-display "opening the Display panel"
 # Sway sets SWAYSOCK for its own children; drop the outer one (Console) so nothing mixes them.
-env -u SWAYSOCK -u I3SOCK WLR_BACKENDS=wayland sway -c /usr/share/casthub/display/panel.conf 2>&1 \
+if [ -n "$capture" ]; then
+  echo "casthub-display: saving the PC's stream to $capture"
+  logger -t casthub-display "saving the PC's stream (capture on)"
+fi
+env -u SWAYSOCK -u I3SOCK CASTHUB_CAPTURE="$capture" WLR_BACKENDS=wayland sway -c /usr/share/casthub/display/panel.conf 2>&1 \
   | systemd-cat -t casthub-panel
 rm -f "$state"
 logger -t casthub-display "Display panel closed"

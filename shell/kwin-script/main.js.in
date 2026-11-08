@@ -104,6 +104,14 @@ function onDockDesktop(w) {
 
 function adopt(w, initial) {
     if (!manageable(w)) return;
+    // The Display panel (casthub-display, SPEC D27) is a nested Sway window: keep it on the
+    // view it was opened from, fullscreen and focused, rather than moving it to Desktop.
+    if (w.resourceClass === "wlroots") {
+        w.fullScreen = true;
+        workspace.activeWindow = w;
+        log("Display panel shown fullscreen");
+        return;
+    }
     for (let i = 0; i < 2; i++) {
         if (w.resourceClass === VIEWS[i].app && docked[i] === null) { dock(w, i); return; }
     }
