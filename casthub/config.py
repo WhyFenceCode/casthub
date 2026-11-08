@@ -11,7 +11,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_PATH = Path("/etc/casthub/casthub.toml")
-LAYOUTS = ("per_screen", "per_radio", "mirror_all")
+LAYOUTS = ("mirror_all",)
+# One receiver per screen on one radio failed M4: Windows lists one receiver per Wi-Fi radio.
+# Old configs that still say so get mirror_all.
+OLD_LAYOUTS = ("per_screen", "per_radio")
 THEMES = ("auto", "light", "dark")
 
 
@@ -28,7 +31,7 @@ class Screen:
 @dataclass(frozen=True)
 class Config:
     name_prefix: str = "Cast Hub"
-    layout: str = "per_screen"
+    layout: str = "mirror_all"         # one receiver, shown on every screen
     miracast_base_port: int = 7250
     miracast_interface: str = "wlan0"
     wifi_direct: bool = True
@@ -83,6 +86,8 @@ def parse(data: dict) -> Config:
     d = Config()
 
     mode = _get(layout, "mode", str, d.layout)
+    if mode in OLD_LAYOUTS:
+        mode = "mirror_all"
     if mode not in LAYOUTS:
         raise ConfigError(f"layout.mode must be one of {LAYOUTS}, got {mode!r}")
     busy = _get(mc, "busy_policy", str, d.busy_policy)

@@ -334,6 +334,57 @@ class TestPipelineDescription(unittest.TestCase):
         self.assertIn("leaky=downstream", desc)        # audio can't back up into the demuxer
 
 
+class TestMirrorAll(unittest.TestCase):
+    """M4: Windows lists one receiver per radio, so every screen mirrors one receiver."""
+
+    def test_one_decode_one_window_per_screen(self):
+        desc = media.describe(media.default_spec(1028, "t", "OUT-1", ("OUT-2", "OUT-3")))
+        self.assertEqual(desc.count("vah264dec"), 1)
+        self.assertEqual(desc.count("glimagesink"), 3)
+        self.assertIn("tee name=vt", desc)
+        for name in ("vsink", "vsink1", "vsink2"):
+            self.assertIn(f"name={name}", desc)
+        self.assertNotIn("tee", media.describe(media.default_spec(1028, "t", "OUT-1")))
+
+    def test_windows_by_pid(self):
+        tree = {"type": "root", "nodes": [
+            {"type": "output", "nodes": [{"type": "workspace", "nodes": [{"type": "con", "id": 9, "pid": 42}]}]},
+            {"type": "output", "nodes": [{"type": "workspace", "nodes": [{"type": "con", "id": 4, "pid": 42},
+                                                                       {"type": "con", "id": 5, "pid": 7}]}]}]}
+        self.assertEqual(media.windows_of(tree, 42), [4, 9])
+
+    def test_ui_messages_go_to_every_screen(self):
+        async def go():
+            sent = []
+
+            async def notify(msg):
+                sent.append(msg)
+            rec = Receiver("<receiver>", "OUT-1", (1920, 1080), 0, 1028, "reject", notify, FakePipeline,
+                           mirrors=("OUT-1", "OUT-2"))
+            await rec.set_state("connecting", "<pc-name>")
+            await rec.show_pin("12345670")
+            return rec, sent
+        rec, sent = asyncio.run(go())
+        self.assertEqual(rec.outputs, ("OUT-1", "OUT-2"))      # the main screen isn't listed twice
+        self.assertEqual([(m["cmd"], m["output"]) for m in sent],
+                         [("state", "OUT-1"), ("state", "OUT-2"), ("pin", "OUT-1"), ("pin", "OUT-2")])
+
+    def test_old_layouts_mean_mirror_all(self):
+        self.assertEqual(cfgmod.Config().layout, "mirror_all")
+        for old in ("per_screen", "per_radio"):
+            self.assertEqual(cfgmod.parse({"layout": {"mode": old}}).layout, "mirror_all")
+
+    def test_built_in_screen_is_the_main_one(self):
+        from casthub.hub.__main__ import main_screen_first
+        outs = [("HDMI-A-1", (1920, 1080)), ("eDP-1", (1366, 768)), ("DP-1", (1920, 1080))]
+        self.assertEqual([o for o, _ in sorted(outs, key=main_screen_first)], ["eDP-1", "DP-1", "HDMI-A-1"])
+
+    def test_spec_survives_the_trip_to_the_player(self):
+        from casthub.media import player
+        spec = media.default_spec(1028, "t", "OUT-1", ("OUT-2",))
+        self.assertEqual(player.decode_spec(player.encode_spec(spec)), spec)
+
+
 class TestNames(unittest.TestCase):
     MID = "0" * 32       # made-up machine ID
 

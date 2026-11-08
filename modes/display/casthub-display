@@ -10,8 +10,8 @@
 #     --capture FILE  also save the PC's video stream, exactly as received, to FILE (debugging;
 #                     it holds whatever the PC shows, so keep it under local/ and delete it after)
 #   casthub-display --screens N [--capture FILE]
-#     N screens (1-4) in the panel, one window each: the hub starts one receiver per screen,
-#     on ports 7250, 7251… (the M4 multi-receiver test). The windows are placed side by side.
+#     N screens (1-4) in the panel, one window each, all mirroring the one receiver (layout
+#     mirror_all; M4 showed Windows lists one receiver per radio). Placed side by side.
 #   casthub-display --kill
 #     close the panel and stop every panel process of this user, also stuck or orphaned ones
 #     (SIGTERM, then SIGKILL). Display mode's own hub (casthub-hub.service) is left alone.
@@ -108,7 +108,7 @@ if [ -n "$capture" ]; then
   echo "casthub-display: saving the PC's stream to $capture"
   logger -t casthub-display "saving the PC's stream (capture on)"
 fi
-[ "$screens" -gt 1 ] && logger -t casthub-display "$screens screens (one receiver each)"
+[ "$screens" -gt 1 ] && logger -t casthub-display "$screens screens (mirrored)"
 outer_sway=${SWAYSOCK:-}
 # WLR_WL_OUTPUTS: the nested Sway opens one window per output, and the hub sees N screens.
 env -u SWAYSOCK -u I3SOCK CASTHUB_CAPTURE="$capture" WLR_BACKENDS=wayland WLR_WL_OUTPUTS="$screens" \

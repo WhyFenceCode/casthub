@@ -7,7 +7,7 @@ answering. Now the hub runs each stream as
     python3 -I -c <BOOT> '<MediaSpec as JSON>'
 
 and kills it when the cast ends. The video window always goes with the process, and each
-receiver's window has its own pid (place_on_output picks it by pid).
+cast's windows have their own pid (place_on_outputs picks them by pid; one per mirrored screen).
 
 The child reports on stdout, JSON lines:
     {"event": "started"}  or  {"event": "failed", "text": "..."}     (exactly one, first)
@@ -51,7 +51,9 @@ def encode_spec(spec: media.MediaSpec) -> str:
 
 def decode_spec(text: str) -> media.MediaSpec:
     fields = {f.name for f in dataclasses.fields(media.MediaSpec)}
-    return media.MediaSpec(**{k: v for k, v in json.loads(text).items() if k in fields})
+    data = {k: v for k, v in json.loads(text).items() if k in fields}
+    data["mirrors"] = tuple(data.get("mirrors", ()))      # JSON has no tuples
+    return media.MediaSpec(**data)
 
 
 # ---- hub side ------------------------------------------------------------------------------

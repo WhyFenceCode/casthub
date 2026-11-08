@@ -3,6 +3,9 @@
     udpsrc ! rtpjitterbuffer ! rtpmp2tdepay ! tsdemux ─┬ h264parse ! vah264dec ! glimagesink
                                                       └ aacparse ! avdec_aac ! pipewiresink
 
+Mirrored screens (layout mirror_all): the video is decoded once, then a tee feeds one
+glimagesink per screen; place_on_outputs() puts one window on each.
+
 No GLib main loop is needed: the bus is polled from asyncio, and the first-frame probe hands
 over to the event loop with call_soon_threadsafe.
 """
@@ -11,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import time
@@ -39,6 +43,7 @@ class MediaSpec:
     rtp_port: int
     title: str                      # PipeWire client name
     output: str = ""                # Wayland output to go fullscreen on ("" = compositor's choice)
+    mirrors: tuple[str, ...] = ()   # more outputs showing the same video (one more window each)
     audio: bool = True
     decoder: str = "vah264dec"      # software fallback: avdec_h264
     video_sink: str = "glimagesink"    # waylandsink crashed the hub when the output changed size
@@ -58,25 +63,37 @@ STAGES = [("net", "src", "src"), ("jitter", "jb", "src"), ("rtp-out", "depay", "
 def describe(spec: MediaSpec) -> str:
     """gst-launch description of the pipeline (also what the hub logs)."""
     caps = "application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T"
-    sink = spec.video_sink
-    if sink in ("glimagesink", "waylandsink"):
-        # sync=false: show each frame when it is decoded (the PC's timestamps don't match our
-        # clock). async=false: see the audio sink below.
-        sink += " sync=false async=false"
-    if spec.video_sink == "waylandsink":
-        # Not the default: GStreamer 1.28's Wayland plugin segfaulted in output_done when the
-        # output changed size (resizing the Display panel took the whole hub down), with or
-        # without fullscreen-output. glimagesink survives it; Sway fullscreens it, and
-        # place_on_output() moves it to the receiver's screen.
-        sink += " fullscreen=true"
-        if spec.output:
-            sink += f" fullscreen-output={spec.output}"
+
+    def video_sink(output: str, name: str) -> str:
+        sink = spec.video_sink
+        if sink in ("glimagesink", "waylandsink"):
+            # sync=false: show each frame when it is decoded (the PC's timestamps don't match our
+            # clock). async=false: see the audio sink below.
+            sink += " sync=false async=false"
+        if spec.video_sink == "waylandsink":
+            # Not the default: GStreamer 1.28's Wayland plugin segfaulted in output_done when the
+            # output changed size (resizing the Display panel took the whole hub down), with or
+            # without fullscreen-output. glimagesink survives it; Sway fullscreens it, and
+            # place_on_outputs() moves it to the receiver's screen.
+            sink += " fullscreen=true"
+            if output:
+                sink += f" fullscreen-output={output}"
+        return f"{sink} name={name}"
+
+    if spec.mirrors:
+        # One decode, one window per screen. Each branch drops old frames rather than hold
+        # the others up (a slow screen must not freeze the rest).
+        branch = "queue leaky=downstream max-size-buffers=2 max-size-bytes=0 max-size-time=0"
+        video = f" ! tee name=vt vt. ! {branch} ! {video_sink(spec.output, 'vsink')}" + "".join(
+            f" vt. ! {branch} ! {video_sink(out, f'vsink{i + 1}')}" for i, out in enumerate(spec.mirrors))
+    else:
+        video = f" ! {video_sink(spec.output, 'vsink')}"
     parts = [
         f'udpsrc name=src port={spec.rtp_port} buffer-size=2097152 caps="{caps}"',
         f"rtpjitterbuffer name=jb latency={spec.latency_ms}",
         "rtpmp2tdepay name=depay" + (" ! tee name=cap ! queue" if spec.capture else ""), "tsdemux name=demux latency=0",
         "demux. ! video/x-h264 ! queue name=vq max-size-time=0 max-size-bytes=0 max-size-buffers=64 ! h264parse name=vparse"
-        f" ! {spec.decoder} ! {sink} name=vsink",
+        f" ! {spec.decoder}{video}",
     ]
     desc = " ! ".join(parts[:4]) + " " + parts[4]
     if spec.audio:
@@ -211,27 +228,57 @@ class Pipeline:
             self.pipe = None
 
 
-async def place_on_output(output: str, pid: int | None = None) -> None:
-    """Under Sway, put the video window of process `pid` (default: this one) fullscreen on
-    `output` (glimagesink has no output choice of its own). Each cast plays in its own process
-    (media/player.py), so the pid picks exactly that receiver's video."""
-    if not output or not os.environ.get("SWAYSOCK"):
+def windows_of(tree: dict, pid: int) -> list[int]:
+    """Sway con_ids of the windows of process `pid` in a `swaymsg -t get_tree` tree, oldest first."""
+    found, todo = [], [tree]
+    while todo:
+        node = todo.pop()
+        if node.get("pid") == pid and node.get("type") in ("con", "floating_con"):
+            found.append(node["id"])
+        todo += node.get("nodes", []) + node.get("floating_nodes", [])
+    return sorted(found)
+
+
+async def _swaymsg(*args: str) -> tuple[int, bytes]:
+    with contextlib.suppress(OSError):
+        proc = await asyncio.create_subprocess_exec("swaymsg", *args, stdout=asyncio.subprocess.PIPE,
+                                                    stderr=asyncio.subprocess.DEVNULL)
+        out, _ = await proc.communicate()
+        return proc.returncode or 0, out
+    return 1, b""
+
+
+async def place_on_outputs(outputs: tuple[str, ...] | list[str], pid: int | None = None) -> None:
+    """Under Sway, put the video windows of process `pid` (default: this one) fullscreen, one
+    on each of `outputs` (glimagesink has no output choice of its own). Each cast plays in its
+    own process (media/player.py), so the pid picks exactly that cast's windows; a mirrored
+    cast has one window per screen."""
+    outputs = [o for o in outputs if o]
+    if not outputs or not os.environ.get("SWAYSOCK"):
         return
-    cmd = f"[pid={pid or os.getpid()}] move container to output {output}, fullscreen enable"
-    # The first frame can arrive before the window is mapped ("No matching node"): retry briefly.
+    pid = pid or os.getpid()
+    # The first frame can arrive before every window is mapped: retry briefly.
     for _ in range(PLACE_TRIES):
-        with contextlib.suppress(OSError):
-            proc = await asyncio.create_subprocess_exec("swaymsg", cmd, stdout=asyncio.subprocess.DEVNULL,
-                                                        stderr=asyncio.subprocess.DEVNULL)
-            if await proc.wait() == 0:
-                return
+        rc, out = await _swaymsg("-t", "get_tree")
+        wins = []
+        if rc == 0:
+            with contextlib.suppress(ValueError):
+                wins = windows_of(json.loads(out), pid)
+        if len(wins) >= len(outputs):
+            for con, output in zip(wins, outputs, strict=False):
+                await _swaymsg(f"[con_id={con}] move container to output {output}, fullscreen enable")
+            return
         await asyncio.sleep(0.2)
-    log.warning("could not put the video on %s", output)
+    log.warning("could not put the video on %s", ", ".join(outputs))
 
 
-def default_spec(rtp_port: int, title: str, output: str = "") -> MediaSpec:
+async def place_on_output(output: str, pid: int | None = None) -> None:
+    await place_on_outputs([output], pid)
+
+
+def default_spec(rtp_port: int, title: str, output: str = "", mirrors: tuple[str, ...] = ()) -> MediaSpec:
     """Environment overrides for testing: CASTHUB_DECODER, CASTHUB_VIDEO_SINK, CASTHUB_CAPTURE (a file)."""
-    return MediaSpec(rtp_port, title, output,
+    return MediaSpec(rtp_port, title, output, tuple(mirrors),
                      decoder=os.environ.get("CASTHUB_DECODER", "vah264dec"),
                      video_sink=os.environ.get("CASTHUB_VIDEO_SINK", "glimagesink"),
                      capture=os.environ.get("CASTHUB_CAPTURE", ""))

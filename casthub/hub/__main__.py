@@ -4,7 +4,8 @@
 
 In the Display session (Sway) it follows Sway's outputs. Elsewhere (e.g. testing from the
 Workstation desktop) it uses --outputs/--size or the connected DRM connectors.
-Layout `per_screen`: receiver n listens on miracast.base_port + n.
+Layout `mirror_all`: one receiver on miracast.base_port, shown on every screen (M4: Windows
+lists one receiver per Wi-Fi radio, so one receiver per screen can't work).
 """
 
 from __future__ import annotations
@@ -61,6 +62,12 @@ async def output_size(output: str) -> tuple[int, int] | None:
             if name == output:
                 return size
     return None
+
+
+def main_screen_first(o: tuple[str, tuple[int, int]]) -> tuple[bool, str]:
+    """Sort key: the built-in panel is the main screen (its shape picks the video modes), then
+    by name, so the main screen doesn't depend on the order Sway reports outputs in."""
+    return (not o[0].startswith(("eDP", "LVDS", "DSI")), o[0])
 
 
 class UiLink:
@@ -138,11 +145,12 @@ class Hub:
         return self.cfg.wifi_direct and bool(self.receivers) and r is self.receivers[0]
 
     async def start(self) -> None:
-        outs = self.outputs if self.cfg.layout == "per_screen" else self.outputs[:1]
-        for i, (output, size) in enumerate(outs):
+        # mirror_all: one receiver; the first screen is the main one, the rest mirror it.
+        mirrors = tuple(o for o, _ in self.outputs[1:])
+        for i, (output, size) in enumerate(self.outputs[:1]):
             r = Receiver(self.name_for(i, output), output, size, self.cfg.miracast_base_port + i,
                          self.cfg.rtp_base_port + 2 * i, self.cfg.busy_policy, self.ui.send, on_ended=self.rename,
-                         size_now=output_size)
+                         size_now=output_size, mirrors=mirrors)
             await r.start()
             self.receivers.append(r)
             try:
@@ -265,6 +273,7 @@ async def amain(a: argparse.Namespace) -> int:
         found = dict(drm_outputs())
         names = a.outputs.split(",") if a.outputs else list(found) or [""]
         outputs = [(n, parse_size(a.size) if a.size else found.get(n, (1920, 1080))) for n in names]
+    outputs.sort(key=main_screen_first)
     hub = Hub(cfg, outputs)
     await hub.start()
     stop = asyncio.Event()

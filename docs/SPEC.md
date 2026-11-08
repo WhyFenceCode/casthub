@@ -196,23 +196,22 @@ Out of scope for v1: DTLS media encryption, PIN pairing, and sending input back 
 
 ## Apple: AirPlay via UxPlay
 
-- One UxPlay process per screen, each with its own name (`-n Brand-2`), its own ports, and its
-  window pinned to that screen by Sway.
-- The hub starts and stops these processes as monitors are plugged in or removed.
+- One UxPlay process under the receiver's name, its video shown on every screen like Miracast
+  (layout `mirror_all`).
 - Senders must be on the same network or the Cast Hub hotspot.
 - Known limits: iPhones mirror only; portrait phones show with side bars; DRM apps usually
   show black.
 
 ## Screens and layout modes
 
-Every connected screen is its own cast target. How Miracast maps onto screens is a config
-option, because one Wi-Fi radio may only present one Miracast receiver.
+One receiver, shown on every connected screen (`mirror_all`, the only layout). The built-in
+screen is the main one: its shape picks the video modes offered to the PC. The video is decoded
+once and split into one window per screen; the idle, connecting and PIN pages show on all of them.
 
-| Layout | Miracast | AirPlay | Use when |
-|--------|----------|---------|----------|
-| `per_screen` | One receiver per screen on one radio, ports 7250, 7251… | One UxPlay per screen | The multi-port test passes |
-| `per_radio` | One receiver per Wi-Fi adapter, each mapped to a screen | One UxPlay per screen | Multi-port fails; add USB Wi-Fi adapters |
-| `mirror_all` | One receiver, decoded once, shown on every screen | One UxPlay, mirrored | Everything else fails |
+Why only one: M4 showed that Windows lists Miracast receivers from Wi-Fi Direct discovery, and
+one Wi-Fi radio presents one receiver, so a second receiver on the same radio is never listed.
+Old configs that say `per_screen` or `per_radio` get `mirror_all`. One receiver per screen would
+need one Wi-Fi adapter per screen; not planned.
 
 Config lives at `/etc/casthub/casthub.toml`; see `casthub.example.toml` for the format.
 
@@ -251,7 +250,7 @@ casthub/
     discovery/mdns.py       # _display._tcp records per receiver
     mice/                   # TCP listener, MS-MICE TLV parser
     rtsp/                   # WFD RTSP client, M1–M7 + M16 keepalive
-    media/                  # GStreamer pipelines, mirror_all tee
+    media/                  # GStreamer pipelines (one decode, a tee to every screen)
     airplay/                # UxPlay process manager
     ui/                     # idle / busy / connecting screens (QML)
     switcher/               # leave page (QML), LAN-page PIN hash
@@ -270,7 +269,7 @@ casthub/
 
 ### Component contracts
 
-- **hub** watches Sway output events and keeps one Receiver per screen (per layout mode).
+- **hub** keeps one Receiver, shown on every screen (layout `mirror_all`).
   Receiver = name, output, Miracast port, UxPlay process, state:
   `idle | connecting | streaming | busy`.
 - **mice** parses MS-MICE TLVs (FRIENDLY_NAME, RTSP_PORT, SOURCE_ID) and emits
@@ -291,9 +290,9 @@ M1 (Fedora installed) and M2 (Miracast go/no-go connection tests) are done.
 | M7 | Login screen and modes | SDDM theme with Workstation, Display and Console; Display starts with no password; Console only for admins; leaving a mode returns to the login screen |
 | M8 | Branding and graphics | Tokens extracted and confirmed; boot splash, login, desktop, Display screens and leave page match the mockups; one colour change in `brand/tokens.toml` updates all of them after one rebuild |
 | M3 | Repo skeleton + receiver *(done)* | Privacy guardrails; config loader, hub, MICE listener and RTSP handshake; one receiver shows a Windows cast fullscreen (accepted over Wi-Fi Direct; the network path is M4B) |
-| M4 | Multi-port test *(failed, set aside: Win + K lists one receiver per radio; see LOG)* | Two mDNS receivers (7250, 7251): Win + K lists both and a cast to 7251 plays; layout mode chosen from the result |
+| M4 | Multi-port test *(done: single receiver only)* | Two receivers on one radio failed (Win + K lists one receiver per radio), so Cast Hub has one receiver and every screen mirrors it (`mirror_all`) |
 | M4B | Miracast over the network *(done)* | A Windows cast over the same network (MS-MICE, mDNS, port 7250) plays; M3's acceptance was over Wi-Fi Direct. M4 depends on it |
-| M5 | AirPlay | One UxPlay per screen; an iPhone mirrors to a named screen |
+| M5 | AirPlay | One UxPlay, shown on every screen like Miracast; an iPhone mirrors to the hub |
 | M6 | Kiosk session | Display mode boots to idle screens; busy rule works; Ctrl + Alt + Esc opens the leave page during a stream |
 | M9 | Desktop shell | The mockup desktop (top bar, Console / Files / Desktop, today panel, meters) installed for a fresh user with no manual setup; logout, lock and switch-user screens themed and working (D22) |
 | M10 | Passthrough | From the leave page, pick a Miracast target; an iPhone mirroring to Cast Hub over AirPlay shows on that target (D21) |
@@ -305,8 +304,7 @@ M1 (Fedora installed) and M2 (Miracast go/no-go connection tests) are done.
   measure before promising more screens.
 - **Screens:** one USB-C port, so monitors, charger and any USB Wi-Fi adapter share one dock.
 - **Wi-Fi chip:** needs P2P-client/P2P-GO for Miracast discovery and AP mode for the hotspot.
-- **Open:** does Win + K list several receivers from one radio? (M4)
-- **Open:** does Windows honour a non-7250 port in the mDNS record? (M4)
+- **Answered (M4):** Win + K lists one receiver per radio (from Wi-Fi Direct discovery), so screens mirror one receiver.
 - **Open:** Windows appears to project to one wireless display at a time; this design assumes
   one screen per sending device.
 

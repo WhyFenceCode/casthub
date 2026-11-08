@@ -1,4 +1,7 @@
-"""One receiver = one screen: MS-MICE listener + mDNS record + at most one stream.
+"""One receiver: MS-MICE listener + mDNS record + at most one stream, shown on every screen.
+
+`output` is the main screen (its shape picks the video modes); `mirrors` are the other screens,
+which show the same thing: the same idle page and the same video, decoded once.
 
 State: idle → connecting → streaming → idle. A second sender while busy is rejected (the screen
 shows a busy note) or replaces the first, per `miracast.busy_policy`.
@@ -38,8 +41,10 @@ class Receiver:
                  busy_policy: str, notify: Callable[[dict], Awaitable[None]],
                  pipeline_factory: Callable[..., player.PlayerProcess] = player.PlayerProcess,
                  on_ended: Callable[[Receiver], Awaitable[None]] | None = None,
-                 size_now: Callable[[str], Awaitable[tuple[int, int] | None]] | None = None) -> None:
+                 size_now: Callable[[str], Awaitable[tuple[int, int] | None]] | None = None,
+                 mirrors: tuple[str, ...] = ()) -> None:
         self.name, self.output, self.size = name, output, size
+        self.mirrors = tuple(m for m in mirrors if m != output)
         self.size_now = size_now          # the output's size right now (a window can be resized)
         self.on_ended = on_ended          # after each cast: the hub gives the receiver a new name
         # The name is shown only once PCs can find it (mDNS, Wi-Fi Direct): the hub calls
@@ -70,10 +75,19 @@ class Receiver:
         await self.listener.stop()
         await self.end_current()
 
+    @property
+    def outputs(self) -> tuple[str, ...]:
+        return (self.output, *self.mirrors)
+
+    async def tell(self, msg: dict) -> None:
+        """Send a UI message to every screen this receiver shows on."""
+        for out in self.outputs:
+            await self.notify({**msg, "output": out})
+
     async def set_state(self, state: str, device: str = "") -> None:
         self.state, self.device = state, device
         log.info("%s: %s %s", self.name, state, device)
-        await self.notify({"cmd": "state", "output": self.output, "state": "idle" if state == "busy" else state,
+        await self.tell({"cmd": "state", "state": "idle" if state == "busy" else state,
                            "device": device, "name": self.name if self.name_ready else ""})
 
     async def show_name(self, name: str | None = None) -> None:
@@ -89,14 +103,14 @@ class Receiver:
         await self.set_state(self.state, self.device)
 
     async def show_busy(self, who: str) -> None:
-        await self.notify({"cmd": "busy", "output": self.output,
-                           "text": f"{who or 'Another device'} tried to cast. {self.name} is in use."})
+        await self.tell({"cmd": "busy",
+                         "text": f"{who or 'Another device'} tried to cast. {self.name} is in use."})
         await asyncio.sleep(6)
-        await self.notify({"cmd": "busy", "output": self.output, "text": ""})
+        await self.tell({"cmd": "busy", "text": ""})
 
     async def show_pin(self, pin: str) -> None:
         log.info("%s: %s", self.name, "showing Wi-Fi Direct PIN" if pin else "PIN hidden")
-        await self.notify({"cmd": "pin", "output": self.output, "pin": pin})
+        await self.tell({"cmd": "pin", "pin": pin})
 
     # ---- entry points -------------------------------------------------------------
     async def on_mice(self, conn: MiceConnection) -> None:
@@ -152,7 +166,7 @@ class Receiver:
                     self.size = await self.size_now(self.output) or self.size
             sink = RtspSink(src.addr, src.rtsp_port, SinkCaps(self.size[0], self.size[1], self.rtp_port, self.name))
             await self.set_state("connecting", src.name)
-            spec = media.default_spec(self.rtp_port, f"Cast Hub {self.name}", self.output)
+            spec = media.default_spec(self.rtp_port, f"Cast Hub {self.name}", self.output, self.mirrors)
             on_error = lambda e: failed.done() or failed.set_result(e)  # noqa: E731
             pipe = self.pipeline_factory(spec, first_frame.set, on_error)
             try:
@@ -172,7 +186,7 @@ class Receiver:
                 except TimeoutError:
                     await sink.request_idr()
                     await first_frame.wait()
-                await media.place_on_output(self.output, getattr(pipe, "pid", None))
+                await media.place_on_outputs(self.outputs, getattr(pipe, "pid", None))
                 await self.set_state("streaming", src.name)
 
             async def link_watch() -> str:

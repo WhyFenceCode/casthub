@@ -6,14 +6,14 @@
 name_prefix = "Brand"            # receivers named Brand-1, Brand-2 …
 
 [layout]
-mode = "per_screen"              # per_screen | per_radio | mirror_all
+mode = "mirror_all"              # one receiver shown on every screen (the only mode; see SPEC)
 
 [miracast]
 base_port = 7250
 wifi_direct = true
 interface = "wlan0"
 busy_policy = "reject"           # reject | replace
-rtp_base_port = 1028             # receiver n gets its stream on rtp_base_port + 2n
+rtp_base_port = 1028             # the stream arrives here (UDP)
 # Wi-Fi Direct casts: our address on the P2P link; Cast Hub hands out the rest by DHCP.
 # Pick a private /24 that no network you join uses. Empty = Wi-Fi Direct casts are refused.
 p2p_address = ""                 # unused (NetworkManager addresses Wi-Fi Direct groups)

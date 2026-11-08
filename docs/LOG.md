@@ -202,7 +202,7 @@ since Wi-Fi Direct offers only one receiver per radio.
   cast: Loading, a new name and a new Wi-Fi Direct address. The video sink hung on stop again
   ("did not stop; exiting anyway") and only its own process was affected, as designed.
 
-## M4: multi-port test (failed, set aside by owner), 2026-11-08
+## M4: multi-port test failed → single receiver, mirrored on every screen (done), 2026-11-08
 
 Test: `casthub-display --screens 2`, two receivers on one radio, CAST-U2X8P (7250, also
 announced over Wi-Fi Direct) and CAST-6EX4B (7251), both published over mDNS
@@ -214,4 +214,11 @@ announced over Wi-Fi Direct) and CAST-6EX4B (7251), both published over mDNS
 - Layout options left (SPEC "Screens and layout modes"): `per_radio` (a USB Wi-Fi adapter per
   extra screen) or `mirror_all`. Owner: set aside for now; this Chromebook has one screen.
 - Also seen: receiver 0 landed on the second panel screen (WL-2); the hub does not sort
-  outputs. Fix with the multi-screen work.
+  outputs. Fixed below: the built-in screen (else the first by name) is the main one.
+- Decision (owner): M4 is single receiver only. Every screen mirrors one receiver
+  (`mirror_all`, now the only layout; `per_screen`/`per_radio` in an old config mean the same).
+  The built-in screen is the main one (its shape picks the video modes); the video is decoded
+  once and a tee feeds one glimagesink per screen, each window put fullscreen on its own screen
+  by Sway con_id. The idle, connecting and PIN pages go to every screen.
+- Check: headless Sway with two outputs, a local test stream through the player: one window per
+  output, both fullscreen; the player stopped cleanly. M4 done (single only).
