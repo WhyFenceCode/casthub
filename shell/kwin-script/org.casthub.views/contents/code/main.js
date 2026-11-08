@@ -106,7 +106,7 @@ function onDockDesktop(w) {
 function adopt(w, initial) {
     if (!manageable(w)) return;
     // The Display panel (casthub-display, SPEC D27) is a nested Sway window: keep it on the
-    // view it was opened from, fullscreen and focused, rather than moving it to Desktop.
+    // view it was opened from, windowed and focused, rather than moving it to Desktop.
     if (w.resourceClass === "wlroots") {
         panels.push(w);
         w.closed.connect(() => { panels = panels.filter((p) => p !== w); layoutPanels(); });
@@ -123,13 +123,14 @@ function adopt(w, initial) {
     });
 }
 
-// Display panel windows (casthub-display). One: fullscreen. Several (`--screens N`, the M4
-// multi-receiver test): side by side across the screen, so every receiver can be watched.
+// Display panel windows (casthub-display). One: an ordinary window (owner: the panel is
+// windowed; a cast takes the window's shape). Several (`--screens N`): side by side across the
+// screen, so every screen can be watched.
 let panels = [];
 function layoutPanels() {
     if (panels.length === 1) {
-        panels[0].fullScreen = true;
-        log("Display panel shown fullscreen");
+        panels[0].fullScreen = false;
+        log("Display panel shown in a window");
         return;
     }
     const a = workspace.clientArea(KWin.MaximizeArea, panels[0].output, workspace.currentDesktop);
