@@ -121,28 +121,73 @@ ContainmentItem {
                 })
             })
             konsole("/Windows/1", "Window", "currentSession", [], function (cur) {
-                if (round === root.consoleRound) root.consoleCurrent = Number(cur)
+                // Right after a click Konsole may still report the old tab (focus not there yet).
+                if (round === root.consoleRound && Date.now() - root.consolePickedAt > 1500)
+                    root.consoleCurrent = Number(cur)
             })
         })
     }
-    // Close a tab the way Konsole does: hang up its shell (Konsole then removes the tab).
-    // Konsole's D-Bus API has no close call. With a program running in the tab, the first
-    // click only arms the button ("End?") for 3 s.
+    // Close a tab: type `exit` into its shell (Ctrl+E Ctrl+U first clear a half-typed line), so
+    // the shell ends normally. Konsole's D-Bus API has no close call, and killing the shell
+    // made Konsole report "/bin/bash crashed". With a program running, the first click only
+    // arms the button ("End?") for 3 s; the second stops the program (SIGTERM, then SIGKILL)
+    // and types `exit` once the shell is back at its prompt.
     property int consoleArmed: 0                 // session id waiting for a second click
     Timer { id: disarm; interval: 3000; onTriggered: root.consoleArmed = 0 }
+    function typeExit(id) {
+        konsole("/Sessions/" + id, "Session", "sendText", ["\u0005\u0015exit\r"], null)
+        consoleNudge.restart()
+    }
     function closeConsoleTab(id) {
         konsole("/Sessions/" + id, "Session", "processId", [], function (shell) {
             konsole("/Sessions/" + id, "Session", "foregroundProcessId", [], function (fg) {
-                var busy = Number(fg) > 0 && Number(fg) !== Number(shell)
-                if (busy && root.consoleArmed !== id) { root.consoleArmed = id; disarm.restart(); return }
+                shell = Number(shell); fg = Number(fg)
+                if (fg <= 0 || fg === shell) { root.consoleArmed = 0; root.typeExit(id); return }
+                if (root.consoleArmed !== id) { root.consoleArmed = id; disarm.restart(); return }
                 root.consoleArmed = 0
-                if (Number(shell) > 1) exec.run("kill -HUP " + Number(shell))
-                consoleNudge.restart()
+                exec.run("sh -c 'kill -TERM " + fg + "; sleep 1; kill -KILL " + fg + " 2>/dev/null'")
+                closeRetry.target = id; closeRetry.left = 8; closeRetry.restart()
             })
         })
     }
-    function switchConsoleTab(id) { konsole("/Windows/1", "Window", "setCurrentSession", [id], null); consoleNudge.restart() }
-    function newConsoleTab() { konsole("/Windows/1", "Window", "newSession", [], null); consoleNudge.restart() }
+    Timer {                                      // wait for the shell to get its prompt back
+        id: closeRetry
+        property int target: 0
+        property int left: 0
+        interval: 400
+        onTriggered: root.konsole("/Sessions/" + target, "Session", "foregroundProcessId", [], function (fg) {
+            root.konsole("/Sessions/" + closeRetry.target, "Session", "processId", [], function (shell) {
+                if (Number(fg) === Number(shell)) root.typeExit(closeRetry.target)
+                else if (--closeRetry.left > 0) closeRetry.restart()
+            })
+        })
+    }
+    // Konsole reports the current tab only after it has keyboard focus, so a click also
+    // focuses the console (you want to type there anyway) and marks the tab at once.
+    property int consolePicked: 0
+    property double consolePickedAt: 0
+    function focusConsole() {
+        for (var i = 0; i < deskTasks.count; i++) {
+            var idx = deskTasks.index(i, 0)
+            if (deskTasks.data(idx, TaskManager.AbstractTasksModel.AppId) === root.dockApps[0]) {
+                deskTasks.requestActivate(idx)
+                return
+            }
+        }
+    }
+    function switchConsoleTab(id) {
+        consoleCurrent = id; consolePicked = id; consolePickedAt = Date.now()
+        konsole("/Windows/1", "Window", "setCurrentSession", [id], null)
+        focusConsole()
+        consoleNudge.restart()
+    }
+    function newConsoleTab() {
+        konsole("/Windows/1", "Window", "newSession", [], function (id) {
+            root.consoleCurrent = Number(id); root.consolePicked = Number(id); root.consolePickedAt = Date.now()
+        })
+        focusConsole()
+        consoleNudge.restart()
+    }
     function tabLabel(title) {                   // "~/src : bash" → "~/src"; Konsole's default format
         var at = title.lastIndexOf(" : ")
         return at > 0 ? title.slice(0, at) : title

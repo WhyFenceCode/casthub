@@ -3,3 +3,9 @@
 # Merged into /etc/xdg/konsolerc by tools/install-theme.sh.
 [KonsoleWindow]
 ShowMenuBarByDefault=false
+
+# The docked console's tabs are shown in the panel header (desktop view), and Console mode
+# hides its tab bar too: Konsole's own tab bar stays hidden. A setting rather than only the
+# --hide-tabbar flag, so a Konsole restored by the session (old command line) follows it.
+[TabBar]
+TabBarVisibility=AlwaysHideTabBar
