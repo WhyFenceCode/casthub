@@ -393,7 +393,7 @@ print("connection request from <iphone> Phone (iPhone99,9) with deviceID = 00:00
 time.sleep(0.4)
 print("begin video stream wxh = 1920x1080; source 1170x2532", flush=True)
 time.sleep(0.4)
-print("video_reset: type = RTP_Shutdown", flush=True)
+print("raop_rtp_mirror->running is no longer true", flush=True)   # Stop Mirroring (live test)
 time.sleep(30)
 """
 
@@ -404,7 +404,7 @@ class TestAirPlay(unittest.TestCase):
         ev = parse_line("connection request from <owner>'s iPhone (iPhone99,9) with deviceID = 00:00:5e:00:53:01")
         self.assertEqual((ev.kind, ev.device), ("connect", "<owner>'s iPhone"))
         self.assertEqual(parse_line("begin video stream wxh = 1920x1080; source 1170x2532").kind, "video")
-        for end in ("video_reset: type = RTP_Shutdown", "Open connections: 0",
+        for end in ("raop_rtp_mirror->running is no longer true", "video_reset: type = RTP_Shutdown", "Open connections: 0",
                     "***ERROR lost connection with client (network problem?)"):
             self.assertEqual(parse_line(end).kind, "ended")
         self.assertIsNone(parse_line("Open connections: 1"))
@@ -566,6 +566,43 @@ class TestAirPlay(unittest.TestCase):
         self.assertEqual(calls[2], ("WFDIEs", p2p.wfd_subelements(available=True)))
         self.assertEqual(calls[3], ("ExtendedListen", ["on"]))
         self.assertFalse(d.busy)
+
+    def test_end_all_ends_airplay_and_renews(self):
+        """Ctrl+Alt+Esc (casthub-leave → SIGUSR1 → end_all) during an AirPlay cast: the player
+        stops, the receiver gets a new name, and UxPlay restarts under it (new device ID and key),
+        which also drops the iPhone."""
+        from types import SimpleNamespace
+
+        from casthub.hub.__main__ import Hub
+
+        async def go():
+            async def notify(msg):
+                pass
+            restarted = []
+            rec = Receiver("CAST-OLD00", "OUT-1", (1920, 1080), 0, 1028, "reject", notify, FakePipeline,
+                           airplay_ports=(1032, 1034))
+
+            async def publish(name, port):
+                pass
+
+            async def restart():
+                restarted.append(rec.name)
+            hub = SimpleNamespace(receivers=[rec], cfg=SimpleNamespace(pinned_name=lambda o: ""),
+                                  mdns=SimpleNamespace(publish=publish), airplay=SimpleNamespace(restart=restart),
+                                  name_for=lambda i, o: "CAST-NEW00", wifi_direct_names=lambda r: False)
+            hub.restart_airplay = lambda r: Hub.restart_airplay(hub, r)
+            rec.on_ended = lambda r: Hub.rename(hub, r)
+            src = await rec.on_airplay("<iphone>")
+            await asyncio.sleep(0.1)
+            pipe = FakePipeline.instances[-1]
+            await Hub.end_all(SimpleNamespace(receivers=[rec]))
+            await rec.ended_task
+            return src, pipe, rec, restarted
+        src, pipe, rec, restarted = asyncio.run(go())
+        self.assertTrue(src.stop.is_set())
+        self.assertTrue(pipe.stopped)
+        self.assertEqual((rec.state, rec.name, rec.name_ready), ("idle", "CAST-NEW00", True))
+        self.assertEqual(restarted, ["CAST-NEW00"])
 
     def test_busy_drops_the_iphone(self):
         async def go():

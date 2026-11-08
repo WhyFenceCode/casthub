@@ -8,8 +8,10 @@ so the busy policy covers both.
 
 We follow UxPlay's log (stdout) for the cast's life:
     connection request from <device> (<model>) with deviceID = <id>   → a cast starts
+    raop_rtp_mirror->running is no longer true (Stop Mirroring on the iPhone),
     video_reset: type = RTP_Shutdown, Open connections: 0,
     ***ERROR lost connection with client                              → it's over
+("Connection closed on socket" is not used: iOS opens and closes side connections too.)
 After each cast the hub renames the receiver; restart() brings UxPlay back under the new name
 (and a new device ID, so iPhones list a fresh receiver, as Windows does: D26).
 """
@@ -32,7 +34,8 @@ log = logging.getLogger("casthub.airplay")
 RESTART_AFTER_S = 5          # UxPlay exited by itself: try again after this
 STOP_WAIT_S = 3              # SIGTERM, then SIGKILL
 CONNECT_RE = re.compile(r"connection request from (.*) \(([^()]*)\) with deviceID = (\S+)")
-ENDED = ("video_reset: type = RTP_Shutdown", "Open connections: 0", "lost connection with client")
+ENDED = ("raop_rtp_mirror->running is no longer true",       # seen: Stop Mirroring on the iPhone
+         "video_reset: type = RTP_Shutdown", "Open connections: 0", "lost connection with client")
 
 
 class Source(Protocol):

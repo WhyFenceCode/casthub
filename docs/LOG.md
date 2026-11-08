@@ -249,3 +249,11 @@ Owner had installed UxPlay 1.73.7 (Fedora package); nothing else done. Test devi
 - Owner: Windows still listed the hub during a cast. Now any cast tells casthub-p2p `busy`:
   the WFD IE says "session not available" and extended listen stops, so Win + K drops it; on
   idle it is discoverable again (then renamed).
+- Live test 4: the picture shows on the screen, and Win + K drops the hub during the cast. But
+  Stop Mirroring on the iPhone did not end the cast: UxPlay logs
+  `raop_rtp_mirror->running is no longer true`, which the hub didn't watch for. It does now
+  ("Connection closed on socket" is left out: iOS opens side connections too).
+- Ctrl+Alt+Esc (Display mode) during AirPlay: `casthub-leave` → SIGUSR1 → end_all: the player
+  stops, a new name, UxPlay restarts under it with a new device ID and key (no `-key`, so
+  nothing is stored; that also drops the iPhone), a new Wi-Fi Direct address, discoverable
+  again. Covered by a test.
