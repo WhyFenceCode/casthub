@@ -35,8 +35,10 @@ class Source:
 class Receiver:
     def __init__(self, name: str, output: str, size: tuple[int, int], mice_port: int, rtp_port: int,
                  busy_policy: str, notify: Callable[[dict], Awaitable[None]],
-                 pipeline_factory: Callable[..., media.Pipeline] = media.Pipeline) -> None:
+                 pipeline_factory: Callable[..., media.Pipeline] = media.Pipeline,
+                 on_ended: Callable[[Receiver], Awaitable[None]] | None = None) -> None:
         self.name, self.output, self.size = name, output, size
+        self.on_ended = on_ended          # after each cast: the hub gives the receiver a new name
         self.mice_port, self.rtp_port, self.busy_policy = mice_port, rtp_port, busy_policy
         self.notify, self.pipeline_factory = notify, pipeline_factory
         self.state = "idle"
@@ -57,7 +59,7 @@ class Receiver:
         self.state = state
         log.info("%s: %s %s", self.name, state, device)
         await self.notify({"cmd": "state", "output": self.output, "state": "idle" if state == "busy" else state,
-                           "device": device})
+                           "device": device, "name": self.name})
 
     async def show_busy(self, who: str) -> None:
         await self.notify({"cmd": "busy", "output": self.output,
@@ -175,4 +177,7 @@ class Receiver:
                 await sink.teardown()
             if self.current is src:
                 self.current = None
+            if self.on_ended:
+                with contextlib.suppress(Exception):
+                    await self.on_ended(self)
             await self.set_state("idle")

@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from casthub import config as cfgmod  # noqa: E402
+from casthub import naming  # noqa: E402
 from casthub.discovery import mdns, p2p  # noqa: E402
 from casthub.hub.receiver import Receiver  # noqa: E402
 from casthub.media import pipeline as media  # noqa: E402
@@ -318,6 +319,69 @@ class TestPipelineDescription(unittest.TestCase):
             self.assertIn("async=false", sink)
             self.assertIn("sync=false", sink)
         self.assertIn("leaky=downstream", desc)        # audio can't back up into the demuxer
+
+
+class TestNames(unittest.TestCase):
+    MID = "0" * 32       # made-up machine ID
+
+    def test_session_name_format(self):
+        n = naming.session_name(0, "1", self.MID)
+        self.assertRegex(n, r"^CAST-[0-9A-HJKMNP-Z]{5}$")
+        self.assertEqual(n, naming.session_name(0, "1", self.MID))          # same session: same name
+
+    def test_new_name_per_session_and_screen(self):
+        names = {naming.session_name(i, str(salt), self.MID) for i in range(2) for salt in range(200)}
+        self.assertEqual(len(names), 400)
+        self.assertNotEqual(naming.session_name(0, "1", self.MID), naming.session_name(0, "1", "f" * 32))
+
+    def test_pinned_name_wins(self):
+        c = cfgmod.parse({"screen": [{"output": "OUT-1", "name": "<pinned>"}]})
+        self.assertEqual(c.pinned_name("OUT-1"), "<pinned>")
+        self.assertEqual(c.pinned_name("OUT-2"), "")
+
+    def test_container_id_follows_the_name(self):
+        a = mdns.container_id(7250, self.MID, "CAST-AAAAA")
+        self.assertNotEqual(a, mdns.container_id(7250, self.MID, "CAST-BBBBB"))
+        self.assertEqual(a, mdns.container_id(7250, self.MID, "CAST-AAAAA"))
+
+
+class TestRenameAfterCast(unittest.TestCase):
+    def test_on_ended_runs_and_state_carries_the_name(self):
+        async def go():
+            events, renamed = [], []
+
+            async def notify(msg):
+                events.append(msg)
+
+            async def on_ended(r):
+                renamed.append(r.name)
+                r.name = "CAST-NEW00"
+
+            src = FakeSource(keepalive=True, hold=True)
+            rtsp_port = await src.start()
+            rec = Receiver("CAST-OLD00", "OUT-1", (1920, 1080), 0, 1028, "reject", notify, FakePipeline,
+                           on_ended=on_ended)
+            await rec.start()
+            _r, w = await asyncio.open_connection("127.0.0.1", rec.mice_port)
+            w.write(mp.source_ready("<pc-name>", rtsp_port, SOURCE_ID))
+            for _ in range(100):
+                if rec.state == "streaming":
+                    break
+                await asyncio.sleep(0.02)
+            w.write(mp.stop_projection("<pc-name>", SOURCE_ID))
+            for _ in range(150):
+                if renamed and rec.state == "idle":
+                    break
+                await asyncio.sleep(0.02)
+            w.close()
+            await rec.stop()
+            return renamed, events
+
+        renamed, events = run(go())
+        self.assertEqual(renamed, ["CAST-OLD00"])
+        idle = [e for e in events if e["cmd"] == "state" and e["state"] == "idle"]
+        self.assertEqual(idle[0]["name"], "CAST-OLD00")
+        self.assertEqual(idle[-1]["name"], "CAST-NEW00")           # the screen shows the new name
 
 
 class TestDiscovery(unittest.TestCase):

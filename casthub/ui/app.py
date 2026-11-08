@@ -183,6 +183,8 @@ class DisplayUI(QObject):
                     raise ValueError(f"bad state {msg['state']!r}")
                 r.setProperty("screenState", msg["state"])
                 r.setProperty("deviceName", str(msg.get("device", "")))
+                if msg.get("name"):                  # the hub's current name (new after each cast)
+                    r.setProperty("receiverName", str(msg["name"]))
             elif cmd == "pin":
                 pin = str(msg.get("pin", ""))
                 if pin and not (pin.isdigit() and len(pin) in (4, 8)):

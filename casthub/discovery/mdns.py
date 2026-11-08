@@ -21,17 +21,20 @@ SERVICE = "_display._tcp"
 _NS = uuid.uuid5(uuid.NAMESPACE_DNS, "display.casthub.invalid")
 
 
-def container_id(port: int, machine_id: str | None = None) -> str:
+def container_id(port: int, machine_id: str | None = None, session: str = "") -> str:
     if machine_id is None:
         try:
             machine_id = Path("/etc/machine-id").read_text().strip()
         except OSError:
             machine_id = ""
-    return "{" + str(uuid.uuid5(_NS, f"{machine_id}:{port}")).upper() + "}"
+    # `session` (the receiver's current name) gives a new ID with each new name, so Windows
+    # treats the network-path receiver as a new display too.
+    key = f"{machine_id}:{port}" + (f":{session}" if session else "")
+    return "{" + str(uuid.uuid5(_NS, key)).upper() + "}"
 
 
-def txt_records(port: int, machine_id: str | None = None) -> list[bytes]:
-    return [f"container_id={container_id(port, machine_id)}".encode()]
+def txt_records(port: int, machine_id: str | None = None, session: str = "") -> list[bytes]:
+    return [f"container_id={container_id(port, machine_id, session)}".encode()]
 
 
 class Mdns:
@@ -61,7 +64,7 @@ class Mdns:
         await self.withdraw(port)
         (path,) = await self._call("/", f"{AVAHI}.Server", "EntryGroupNew")
         await self._call(path, f"{AVAHI}.EntryGroup", "AddService", "iiussssqaay",
-                         [IF_UNSPEC, PROTO_UNSPEC, 0, name, SERVICE, "", "", port, txt_records(port)])
+                         [IF_UNSPEC, PROTO_UNSPEC, 0, name, SERVICE, "", "", port, txt_records(port, session=name)])
         await self._call(path, f"{AVAHI}.EntryGroup", "Commit")
         self.groups[port] = path
         log.info("mdns: %s.%s port %d", name, SERVICE, port)

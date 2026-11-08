@@ -19,6 +19,7 @@ import signal
 from pathlib import Path
 
 from casthub import config as cfgmod
+from casthub import naming
 from casthub.discovery.mdns import Mdns
 from casthub.hub.receiver import Receiver
 
@@ -83,12 +84,13 @@ class Hub:
         self.mdns = Mdns()
         self.receivers: list[Receiver] = []
         self.p2p_task: asyncio.Task | None = None
+        self.p2p_writer: asyncio.StreamWriter | None = None
 
     async def start(self) -> None:
         outs = self.outputs if self.cfg.layout == "per_screen" else self.outputs[:1]
         for i, (output, size) in enumerate(outs):
-            r = Receiver(self.cfg.receiver_name(i, output), output, size, self.cfg.miracast_base_port + i,
-                         self.cfg.rtp_base_port + 2 * i, self.cfg.busy_policy, self.ui.send)
+            r = Receiver(self.name_for(i, output), output, size, self.cfg.miracast_base_port + i,
+                         self.cfg.rtp_base_port + 2 * i, self.cfg.busy_policy, self.ui.send, on_ended=self.rename)
             await r.start()
             self.receivers.append(r)
             try:
@@ -108,7 +110,8 @@ class Hub:
             except OSError:
                 await asyncio.sleep(10)
                 continue
-            w.write(json.dumps({"cmd": "advertise", "name": first.name, "port": first.mice_port}).encode() + b"\n")
+            self.p2p_writer = w
+            await self.p2p_advertise()
             while line := await r.readline():
                 with contextlib.suppress(ValueError, KeyError):
                     ev = json.loads(line)
@@ -119,6 +122,33 @@ class Hub:
                     elif ev["event"] == "pin":
                         await first.show_pin(str(ev["pin"]))
             await asyncio.sleep(2)
+
+    def name_for(self, index: int, output: str) -> str:
+        return self.cfg.pinned_name(output) or naming.session_name(index, naming.session_salt())
+
+    async def rename(self, r: Receiver) -> None:
+        """After a cast: a new name (and mDNS ID), so Windows lists a fresh display."""
+        i = self.receivers.index(r)
+        new = self.name_for(i, r.output)
+        if new == r.name:
+            return
+        log.info("%s is now %s", r.name, new)
+        r.name = new
+        try:
+            await self.mdns.publish(new, r.mice_port)
+        except Exception as e:  # noqa: BLE001 (Avahi down: Wi-Fi discovery still works)
+            log.warning("mdns: %s", e)
+        if i == 0:
+            await self.p2p_advertise()
+
+    async def p2p_advertise(self) -> None:
+        w = self.p2p_writer
+        if w is None or w.is_closing() or not self.receivers:
+            return
+        first = self.receivers[0]
+        w.write(json.dumps({"cmd": "advertise", "name": first.name, "port": first.mice_port}).encode() + b"\n")
+        with contextlib.suppress(ConnectionError):
+            await w.drain()
 
     async def end_all(self) -> None:
         """End every cast (SIGUSR1: casthub-leave, so the leave page isn't under a video)."""

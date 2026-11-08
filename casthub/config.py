@@ -46,12 +46,17 @@ class Config:
     longitude: float | None = None
     screens: tuple[Screen, ...] = field(default_factory=tuple)
 
-    def receiver_name(self, index: int, output: str = "") -> str:
-        """Name of the receiver on a screen: pinned name, else <prefix>-<n> (1-based)."""
+    def pinned_name(self, output: str) -> str:
+        """The name pinned for a screen in casthub.toml, or "" (then naming.session_name)."""
         for s in self.screens:
-            if s.output == output:
+            if s.output == output and s.name:
                 return s.name
-        return f"{self.name_prefix}-{index + 1}"
+        return ""
+
+    def receiver_name(self, index: int, output: str = "") -> str:
+        """Name of the receiver on a screen: pinned name, else <prefix>-<n> (1-based). Only a
+        placeholder until the hub reports the session name (naming.session_name)."""
+        return self.pinned_name(output) or f"{self.name_prefix}-{index + 1}"
 
     def coordinates(self) -> str:
         """`44.23° N · 76.49° W` style, or "" if not set."""
