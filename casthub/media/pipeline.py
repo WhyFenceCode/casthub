@@ -45,12 +45,18 @@ class MediaSpec:
     latency_ms: int = 120
 
 
+STATS_S = 5
+
+
 def describe(spec: MediaSpec) -> str:
     """gst-launch description of the pipeline (also what the hub logs)."""
     caps = "application/x-rtp,media=video,clock-rate=90000,encoding-name=MP2T"
     sink = spec.video_sink
     if sink == "waylandsink":
-        sink += " fullscreen=true sync=true"
+        # sync=false: show each frame when it is decoded. With sync=true the sink waited on the
+        # PC's timestamps, which don't match our clock; after the first frame every frame was
+        # "late" and dropped, so the picture froze.
+        sink += " fullscreen=true sync=false"
         if spec.output:
             sink += f" fullscreen-output={spec.output}"
     parts = [
@@ -81,6 +87,8 @@ class Pipeline:
         self.pipe = None
         self._poll: asyncio.Task | None = None
         self._seen_frame = False
+        self.frames_in = 0          # H.264 frames out of the parser (counted on the streaming thread)
+        self.frames_shown = 0       # decoded frames that reached the video sink
 
     def start(self) -> None:
         g = gst()
@@ -92,13 +100,19 @@ class Pipeline:
         if asink is not None and asink.find_property("client-name") is not None:
             asink.set_property("client-name", self.spec.title)
 
-        def probe(_pad, _info):
+        def shown(_pad, _info):
+            self.frames_shown += 1
             if not self._seen_frame:
                 self._seen_frame = True
                 loop.call_soon_threadsafe(self.on_first_frame)
-            return g.PadProbeReturn.REMOVE
+            return g.PadProbeReturn.OK
 
-        self.pipe.get_by_name("vsink").get_static_pad("sink").add_probe(g.PadProbeType.BUFFER, probe)
+        def parsed(_pad, _info):
+            self.frames_in += 1
+            return g.PadProbeReturn.OK
+
+        self.pipe.get_by_name("vsink").get_static_pad("sink").add_probe(g.PadProbeType.BUFFER, shown)
+        self.pipe.get_by_name("vparse").get_static_pad("src").add_probe(g.PadProbeType.BUFFER, parsed)
         if self.pipe.set_state(g.State.PLAYING) == g.StateChangeReturn.FAILURE:
             why = "pipeline did not start"
             bus = self.pipe.get_bus()
@@ -118,7 +132,13 @@ class Pipeline:
         g = gst()
         bus = self.pipe.get_bus()
         mask = g.MessageType.ERROR | g.MessageType.EOS | g.MessageType.WARNING
+        loop = asyncio.get_running_loop()
+        next_stats, last = loop.time() + STATS_S, (0, 0)
         while self.pipe is not None:
+            if loop.time() >= next_stats:          # where frames stop, if the picture freezes
+                now = (self.frames_in, self.frames_shown)
+                log.info("video: %d frames in, %d shown in the last %d s", now[0] - last[0], now[1] - last[1], STATS_S)
+                next_stats, last = loop.time() + STATS_S, now
             msg = bus.pop_filtered(mask)
             if msg is None:
                 await asyncio.sleep(0.05)
