@@ -55,7 +55,7 @@ kill_panel() {
     sleep 0.3
   fi
   rm -f "$state"
-  logger -t casthub-display "--kill: stopped $n panel process(es)"
+  logger -t casthub-display "kill: stopped $n panel process(es)"
   if pids=$(panel_pids) && [ -n "$pids" ]; then
     echo "casthub-display: still running: $pids" >&2
     return 1
