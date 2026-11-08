@@ -86,6 +86,7 @@ class P2PDaemon:
         self.probes = 0
         self.radio = asyncio.Lock()        # a new address and advertising never overlap
         self.address_due = False           # the hub asked for a new Wi-Fi Direct address
+        self.busy = False                  # the hub is casting: not discoverable (set_busy)
         self.mice_addresses: list[str] = []      # our Wi-Fi IPv4 address(es) in the MS-MICE attributes
 
     # ---- D-Bus helpers -------------------------------------------------------------
@@ -154,7 +155,7 @@ class P2PDaemon:
                 "GOIntent": Variant("u", 15),
                 "VendorExtension": Variant("aay", [p2p.mice_vendor_payload(host, self.mice_addresses)])}
         await self.set(self.dev, P2PDEV, "P2PDeviceConfig", "a{sv}", conf)
-        await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements())
+        await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements(available=not self.busy))
         # Offer push-button only, so Windows pairs the way NetworkManager can (no PIN).
         if self.saved_methods is None:
             with contextlib.suppress(RuntimeError):
@@ -166,7 +167,8 @@ class P2PDaemon:
             with contextlib.suppress(RuntimeError):
                 await self.call(self.dev, IFACE, "VendorElemRem", "iay", [frame, old_ie])
         await self.forget_groups()
-        await self.listen()
+        if not self.busy:
+            await self.listen()
         with contextlib.suppress(RuntimeError):      # count discovery scans that reach us (diagnostics)
             await self.call(self.dev, IFACE, "SubscribeProbeReq")
         self.advertising = True
@@ -272,6 +274,23 @@ class P2PDaemon:
                 log.info("Wi-Fi %s; advertising again", "address changed" if moved else "interface was re-added")
                 with contextlib.suppress(RuntimeError):
                     await self.advertise()
+
+    async def set_busy(self, busy: bool) -> None:
+        """A cast is on (any kind: Wi-Fi Direct, network, AirPlay): the WFD IE says "session not
+        available" and we stop extended listen, so Win + K drops us until the cast ends. A Wi-Fi
+        Direct group already formed is not touched."""
+        self.busy = busy
+        async with self.radio:
+            if not self.advertising:
+                return
+            with contextlib.suppress(RuntimeError):
+                await self.find_device()
+                await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements(available=not busy))
+                if busy:
+                    await self.call(self.dev, P2PDEV, "ExtendedListen", "a{sv}", [{}])     # not discoverable
+                else:
+                    await self.listen()
+        log.info("%s", "casting: not discoverable" if busy else "cast over: discoverable again")
 
     async def unadvertise(self) -> None:
         """Stop answering P2P discovery and drop the Miracast IEs."""
@@ -532,13 +551,17 @@ class P2PDaemon:
                     if msg.get("cmd") == "advertise":
                         self.name, self.port = str(msg["name"]), int(msg.get("port", self.port))
                         await self.advertise(new_address=bool(msg.get("new_address")))
+                    elif msg.get("cmd") == "busy":
+                        await self.set_busy(bool(msg.get("busy")))
                 except (ValueError, KeyError, RuntimeError) as e:
                     log.warning("hub message: %s", e)
         finally:
             self.clients.discard(writer)
             writer.close()
-            if not self.clients and self.advertising:
-                await self.unadvertise()
+            if not self.clients:
+                self.busy = False              # the next hub starts discoverable
+                if self.advertising:
+                    await self.unadvertise()
 
     async def serve(self) -> None:
         RUN.mkdir(exist_ok=True)

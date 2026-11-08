@@ -141,6 +141,7 @@ class Hub:
         self.p2p_writer: asyncio.StreamWriter | None = None
         self.p2p_fallback: asyncio.TimerHandle | None = None
         self.airplay: UxPlay | None = None
+        self.p2p_busy = False                # told casthub-p2p we're casting (not discoverable)
 
     def wifi_direct_names(self, r: Receiver) -> bool:
         """Does this receiver's name also go out over Wi-Fi Direct (the first one does)?"""
@@ -155,6 +156,7 @@ class Hub:
             r = Receiver(self.name_for(i, output), output, size, self.cfg.miracast_base_port + i,
                          self.cfg.rtp_base_port + 2 * i, self.cfg.busy_policy, self.ui.send, on_ended=self.rename,
                          size_now=output_size, mirrors=mirrors, airplay_ports=airplay_ports)
+            r.on_state = self.on_receiver_state
             await r.start()
             self.receivers.append(r)
             try:
@@ -169,6 +171,8 @@ class Hub:
                 self.airplay = UxPlay(self.receivers[0], *airplay_ports,
                                       replace=self.cfg.busy_policy == "replace", size_now=output_size)
                 await self.airplay.start()
+                self.receivers[0].airplay_standby = True
+                await self.receivers[0].prepare_airplay()
             else:
                 log.warning("airplay: uxplay is not installed; AirPlay is off")
         if self.cfg.wifi_direct and self.receivers:
@@ -189,6 +193,8 @@ class Hub:
                 continue
             self.p2p_writer = w
             await self.p2p_advertise(new_address=self.wants_new_address(first))
+            if self.p2p_busy:
+                await self.p2p_send({"cmd": "busy", "busy": True})
             while line := await r.readline():
                 with contextlib.suppress(ValueError, KeyError):
                     ev = json.loads(line)
@@ -226,6 +232,26 @@ class Hub:
         if self.wifi_direct_names(r) and await self.p2p_advertise(new_address=self.wants_new_address(r)):
             return                           # shown when casthub-p2p says "advertised"
         await r.show_name()
+
+    async def on_receiver_state(self, r: Receiver) -> None:
+        """While a cast is on, Wi-Fi Direct says "not available" and stops answering discovery,
+        so Win + K stops listing us (it lists from Wi-Fi Direct; M4)."""
+        busy = r.state in ("connecting", "streaming")
+        if busy == self.p2p_busy or r is not (self.receivers[0] if self.receivers else r):
+            return
+        self.p2p_busy = busy
+        await self.p2p_send({"cmd": "busy", "busy": busy})
+
+    async def p2p_send(self, msg: dict) -> bool:
+        w = self.p2p_writer
+        if w is None or w.is_closing():
+            return False
+        w.write(json.dumps(msg).encode() + b"\n")
+        try:
+            await w.drain()
+        except ConnectionError:
+            return False
+        return True
 
     async def restart_airplay(self, r: Receiver) -> None:
         """UxPlay again under the receiver's (new) name and a new device ID. Not if an iPhone

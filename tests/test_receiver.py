@@ -484,6 +484,89 @@ class TestAirPlay(unittest.TestCase):
         self.assertEqual(states[-1], ("idle", ""))
         self.assertEqual((spec.source, spec.rtp_port, spec.audio_port), ("airplay", 1032, 1034))
 
+    def test_standby_player_catches_the_stream_start(self):
+        """An iPhone sends SPS/PPS and its only keyframe as mirroring starts: the player must
+        already be listening, so the cast uses the standby one and a new one waits after."""
+        async def go():
+            states = []
+
+            async def notify(msg):
+                if msg["cmd"] == "state":
+                    states.append(msg["state"])
+            FakePipeline.instances.clear()
+            rec = Receiver("CAST-ABCDE", "OUT-1", (1920, 1080), 0, 1028, "reject", notify, FakePipeline,
+                           airplay_ports=(1032, 1034))
+            rec.airplay_standby = True
+            await rec.prepare_airplay()
+            standby = rec.standby
+            await asyncio.sleep(0.1)                    # its first frame arrives before the cast
+            src = await rec.on_airplay("<iphone>")
+            for _ in range(50):
+                if rec.state == "streaming":
+                    break
+                await asyncio.sleep(0.02)
+            streaming = rec.state
+            src.stop.set()
+            for _ in range(50):
+                if rec.standby is not None and rec.standby is not standby:
+                    break
+                await asyncio.sleep(0.02)
+            return standby, streaming, rec, list(FakePipeline.instances), states
+        standby, streaming, rec, pipes, states = asyncio.run(go())
+        self.assertEqual(streaming, "streaming")
+        self.assertIs(pipes[0], standby)               # the cast played on the standby player
+        self.assertTrue(standby.stopped)
+        self.assertEqual(len(pipes), 2)                # and a fresh one waits for the next iPhone
+        self.assertIs(rec.standby, pipes[1])
+        self.assertEqual(pipes[1].spec.source, "airplay")
+
+    def test_hub_tells_wifi_direct_when_casting(self):
+        from types import SimpleNamespace
+
+        from casthub.hub.__main__ import Hub
+        sent = []
+
+        async def p2p_send(msg):
+            sent.append(msg)
+            return True
+        r = SimpleNamespace(state="idle")
+        hub = SimpleNamespace(receivers=[r], p2p_busy=False, p2p_send=p2p_send)
+
+        async def go():
+            for state in ("connecting", "streaming", "idle", "idle"):
+                r.state = state
+                await Hub.on_receiver_state(hub, r)
+        asyncio.run(go())
+        self.assertEqual(sent, [{"cmd": "busy", "busy": True}, {"cmd": "busy", "busy": False}])
+
+    def test_p2pd_busy_stops_discovery(self):
+        from casthub.discovery.p2pd import P2PDaemon
+        calls = []
+
+        async def call(path, iface, member, sig, args):
+            calls.append((member, args))
+
+        async def set_(path, iface, prop, sig, value):
+            calls.append((prop, value))
+
+        async def nothing(*a):
+            return None
+
+        async def go():
+            d = P2PDaemon.__new__(P2PDaemon)
+            d.radio, d.advertising, d.busy, d.dev = asyncio.Lock(), True, False, "/dev"
+            d.call, d.set, d.find_device = call, set_, nothing
+            d.listen = lambda: call("/dev", "", "ExtendedListen", "", ["on"])
+            await d.set_busy(True)
+            await d.set_busy(False)
+            return d
+        d = asyncio.run(go())
+        self.assertEqual(calls[0], ("WFDIEs", p2p.wfd_subelements(available=False)))
+        self.assertEqual(calls[1], ("ExtendedListen", [{}]))
+        self.assertEqual(calls[2], ("WFDIEs", p2p.wfd_subelements(available=True)))
+        self.assertEqual(calls[3], ("ExtendedListen", ["on"]))
+        self.assertFalse(d.busy)
+
     def test_busy_drops_the_iphone(self):
         async def go():
             async def notify(msg):

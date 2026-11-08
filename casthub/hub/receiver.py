@@ -46,6 +46,15 @@ class Receiver:
         self.name, self.output, self.size = name, output, size
         self.mirrors = tuple(m for m in mirrors if m != output)
         self.airplay_ports = airplay_ports          # (video, audio) RTP from UxPlay on localhost
+        # AirPlay: a player kept listening while idle (set by the hub when UxPlay runs). An
+        # iPhone sends its SPS/PPS and its only keyframe as mirroring starts; a player started
+        # then misses them, and the depayloader drops everything after (no picture, ever).
+        self.airplay_standby = False
+        self.standby: player.PlayerProcess | None = None
+        self.standby_first: Callable[[], None] | None = None
+        self.standby_error: Callable[[str], None] | None = None
+        self.standby_framed = False                 # it showed a frame before the cast began
+        self.on_state: Callable[[Receiver], Awaitable[None]] | None = None     # the hub: busy or not
         self.size_now = size_now          # the output's size right now (a window can be resized)
         self.on_ended = on_ended          # after each cast: the hub gives the receiver a new name
         # The name is shown only once PCs can find it (mDNS, Wi-Fi Direct): the hub calls
@@ -75,6 +84,42 @@ class Receiver:
     async def stop(self) -> None:
         await self.listener.stop()
         await self.end_current()
+        if self.standby:
+            self.standby.stop()
+            self.standby = None
+
+    def _airplay_spec(self) -> media.MediaSpec:
+        video, audio = self.airplay_ports
+        return media.default_spec(video, f"Cast Hub {self.name}", self.output, self.mirrors,
+                                  source="airplay", audio_port=audio)
+
+    async def prepare_airplay(self) -> None:
+        """Have a player listening for UxPlay's RTP before an iPhone starts mirroring."""
+        if not self.airplay_standby or self.standby is not None or self.current is not None:
+            return
+
+        def first() -> None:
+            if self.standby_first:
+                self.standby_first()
+            else:
+                self.standby_framed = True
+
+        def error(text: str) -> None:
+            if self.standby_error:
+                self.standby_error(text)
+            elif self.standby is pipe:          # died while waiting: start another next time
+                log.warning("%s: AirPlay standby player: %s", self.name, text)
+                self.standby = None
+        pipe = self.pipeline_factory(self._airplay_spec(), first, error)
+        try:
+            await pipe.start()
+        except Exception as e:  # noqa: BLE001 (the cast then starts its own player)
+            log.warning("%s: AirPlay standby player did not start: %s", self.name, e)
+            return
+        if self.current is not None or not self.airplay_standby:
+            pipe.stop()                          # a cast began meanwhile; it has its own
+            return
+        self.standby, self.standby_framed = pipe, False
 
     @property
     def outputs(self) -> tuple[str, ...]:
@@ -90,6 +135,8 @@ class Receiver:
         log.info("%s: %s %s", self.name, state, device)
         await self.tell({"cmd": "state", "state": "idle" if state == "busy" else state,
                            "device": device, "name": self.name if self.name_ready else ""})
+        if self.on_state:
+            await self.on_state(self)
 
     async def show_name(self, name: str | None = None) -> None:
         """PCs can find the receiver under `name` (default: the current one): show it."""
@@ -183,6 +230,7 @@ class Receiver:
         if self.on_ended:
             self.name_ready = False         # Loading, while the hub sets up a new name
         await self.set_state("idle")
+        asyncio.ensure_future(self.prepare_airplay())
         if self.on_ended:
             # Not awaited here: a new name can take seconds (Wi-Fi Direct address), and a
             # PC may connect meanwhile.
@@ -200,11 +248,16 @@ class Receiver:
                 with contextlib.suppress(Exception):
                     self.size = await self.size_now(self.output) or self.size
             await self.set_state("connecting", src.name)
-            video, audio = self.airplay_ports
-            spec = media.default_spec(video, f"Cast Hub {self.name}", self.output, self.mirrors,
-                                      source="airplay", audio_port=audio)
-            pipe = await self._start_player(spec, first_frame,
-                                            lambda e: failed.done() or failed.set_result(e))
+            on_error = lambda e: failed.done() or failed.set_result(e)  # noqa: E731
+            pipe, self.standby = self.standby, None
+            if pipe is not None and getattr(getattr(pipe, "proc", None), "returncode", None) is None:
+                # Already listening: it has the stream from its first packet.
+                self.standby_first, self.standby_error = first_frame.set, on_error
+                if self.standby_framed:
+                    first_frame.set()
+            else:
+                log.warning("%s: no AirPlay player was ready; the picture may not appear", self.name)
+                pipe = await self._start_player(self._airplay_spec(), first_frame, on_error)
             log.info("%s: AirPlay from %r", self.name, src.name)
 
             async def frame_watch():
@@ -223,6 +276,7 @@ class Receiver:
         except Exception:
             log.exception("%s: AirPlay stream failed", self.name)
         finally:
+            self.standby_first = self.standby_error = None
             if pipe:
                 pipe.stop()
             await self._finish(src)

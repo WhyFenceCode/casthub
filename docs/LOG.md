@@ -235,3 +235,17 @@ Owner had installed UxPlay 1.73.7 (Fedora package); nothing else done. Test devi
 - Firewall: the active zone already allows 1025-65535, which covers UxPlay's ports.
 - Check: headless Sway, two outputs, a local H.264 + L16 RTP stream through the player: one
   window per screen, fullscreen, clean stop. Live iPhone test pending.
+- Live test 1: the iPhone never appeared. UxPlay exited at once: `-m` got the raw 6-byte
+  address, which it rejects as non-UTF-8. Fixed (text MAC, test).
+- Live test 2: the iPhone connected but the hub heard nothing until UxPlay exited: its stdio
+  log into a pipe is block-buffered. Fixed: UxPlay runs under `stdbuf -oL`.
+- Live test 3: "Connecting" but no picture. RTP arrived (about 80 packets/s) but
+  rtph264depay output nothing: the iPhone sends SPS/PPS and its only keyframe as mirroring
+  starts, before a player started on the connection request is listening. Reproduced locally
+  (a late join with one keyframe: 0 buffers out; with a keyframe each second: normal). Fixed:
+  an AirPlay player waits, listening, whenever the receiver is idle (no window until video
+  comes); the cast uses it and a fresh one starts after. Checked headless with a
+  single-keyframe stream on two screens.
+- Owner: Windows still listed the hub during a cast. Now any cast tells casthub-p2p `busy`:
+  the WFD IE says "session not available" and extended listen stops, so Win + K drops it; on
+  idle it is discoverable again (then renamed).

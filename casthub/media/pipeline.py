@@ -226,8 +226,9 @@ class Pipeline:
         while self.pipe is not None:
             if loop.time() >= next_stats:          # where data stops, if the picture freezes
                 now = dict(self.counts)
-                log.info("media in the last %d s: %s | jitterbuffer %s", STATS_S,
-                         ", ".join(f"{k} {now[k] - last.get(k, 0)}" for k in now), self.jitter_stats())
+                if now != last:            # quiet while an AirPlay standby player waits
+                    log.info("media in the last %d s: %s | jitterbuffer %s", STATS_S,
+                             ", ".join(f"{k} {now[k] - last.get(k, 0)}" for k in now), self.jitter_stats())
                 if not self.caps_logged and now["parsed"]:
                     self.caps_logged = True
                     caps = self.pipe.get_by_name("vparse").get_static_pad("src").get_current_caps()
