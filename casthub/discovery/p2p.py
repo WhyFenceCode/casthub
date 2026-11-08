@@ -20,7 +20,9 @@ the hub over /run/casthub/p2p.sock (JSON lines, group `casthub`):
 
 from __future__ import annotations
 
+import ipaddress
 import os
+import random
 import struct
 
 # ---- information elements (pure, unit-tested) ----------------------------------------------
@@ -122,7 +124,6 @@ def parse_wfd_rtsp_port(ies: bytes) -> int | None:
 # NetworkManager drops any P2P group it did not start itself (it wraps the new interface,
 # ignores it and asks wpa_supplicant to remove it). So the daemon asks NM to connect to the
 # peer; NM 1.58 can only do that with push-button pairing.
-NM_PROFILE = "casthub-wifi-direct"
 PUSH_BUTTON_ONLY = "virtual_push_button"      # WPS config methods: Windows then pairs without a PIN
 
 
@@ -130,13 +131,6 @@ def mac(addr: bytes) -> str:
     return ":".join(f"{b:02x}" for b in addr)
 
 
-def nm_profile_args(peer_mac: str, wfd_ies: bytes, zone: str) -> list[str]:
-    """`nmcli` arguments for an in-memory wifi-p2p profile to one peer. As GO, NM shares
-    (DHCP from its own dnsmasq); as client, it takes a lease from the PC."""
-    return ["connection", "add", "type", "wifi-p2p", "con-name", NM_PROFILE, "save", "no",
-            "connection.autoconnect", "no", "connection.zone", zone,
-            "wifi-p2p.peer", peer_mac, "wifi-p2p.wfd-ies", "0x" + wfd_ies.hex(),
-            "ipv4.method", "auto", "ipv6.method", "disabled"]
 
 
 def ipv4(raw: bytes) -> str | None:
@@ -144,26 +138,23 @@ def ipv4(raw: bytes) -> str | None:
     return ".".join(map(str, raw)) if len(raw) == 4 and any(raw) else None
 
 
-def peer_from_nm(show: str) -> str | None:
-    """The PC's address from `nmcli -t device show` of the P2P device when we are the client:
-    the DHCP server (the PC is GO), else the gateway."""
-    gateway = server = None
-    for line in show.splitlines():
-        key, _, val = line.partition(":")
-        if key == "IP4.GATEWAY" and val and val != "--":
-            gateway = val
-        elif key.startswith("DHCP4.OPTION") and val.replace(" ", "").startswith("dhcp_server_identifier="):
-            server = val.split("=", 1)[1].strip()
-    return server or gateway
 
 
-def peer_from_leases(text: str) -> tuple[str, str] | None:
-    """(address, host name) of the first client in NM's dnsmasq lease file (we are GO)."""
-    for line in text.splitlines():
-        f = line.split()
-        if len(f) >= 3:
-            return f[2], f[3] if len(f) > 3 and f[3] != "*" else ""
-    return None
+
+
+# ---- the Wi-Fi Direct group's own network (we are the group owner) ---------------------------
+PRIVATE_10 = ipaddress.IPv4Network((10 << 24, 8))        # 10/8 (RFC 1918)
+
+
+def group_network(in_use: list[str], rand=random.randrange) -> ipaddress.IPv4Network:
+    """A random /24 in 10/8 for the group that none of our current addresses fall in (a school
+    network may use any private range). Our side is its .1."""
+    taken = [ipaddress.IPv4Address(a) for a in in_use if a]
+    for _ in range(100):
+        net = ipaddress.IPv4Network((int(PRIVATE_10.network_address) | rand(1, 1 << 16) << 8, 24))
+        if not any(a in net for a in taken):
+            return net
+    raise RuntimeError("no free /24 for the Wi-Fi Direct group")
 
 
 # ---- a new Wi-Fi Direct address per session ------------------------------------------------

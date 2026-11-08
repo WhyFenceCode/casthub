@@ -5,6 +5,7 @@
 # Changes: snapshot of / · /usr/lib/casthub + /usr/libexec/casthub (incl. casthub-hub, casthub-p2p)
 #   · /usr/share/casthub/display/sway.conf · /etc/systemd/system/casthub-p2p.service (enabled, started)
 #   · /etc/firewalld/zones/casthub-p2p.xml (used only for Wi-Fi Direct group interfaces)
+#   · /etc/NetworkManager/conf.d/90-casthub-p2p.conf (NM leaves p2p-* group interfaces alone)
 # The firewall's active zone is not changed. Undo: docs/RECOVERY.md, "Receiver".
 set -euo pipefail
 
@@ -18,7 +19,7 @@ step "Snapshot"
 "$repo/tools/snapshot.sh" pre-receiver
 
 step "Packages present"
-for p in dnsmasq wpa_supplicant avahi python3-dbus-fast python3-i3ipc gstreamer1-plugins-bad-free; do
+for p in wpa_supplicant avahi python3-dbus-fast python3-i3ipc gstreamer1-plugins-bad-free; do
   rpm -q "$p" >/dev/null || { echo "missing package: $p" >&2; exit 1; }
 done
 
@@ -30,6 +31,11 @@ install -Dm644 "$repo/system/firewalld/casthub-p2p.xml" /etc/firewalld/zones/cas
 restorecon -F /etc/firewalld/zones/casthub-p2p.xml 2>/dev/null || true
 firewall-cmd --reload >/dev/null
 firewall-cmd --get-zones | tr ' ' '\n' | grep -qx casthub-p2p && echo "zone casthub-p2p loaded"
+
+step "NetworkManager leaves Wi-Fi Direct groups to casthub-p2p"
+install -Dm644 "$repo/system/networkmanager/casthub-p2p.conf" /etc/NetworkManager/conf.d/90-casthub-p2p.conf
+restorecon -F /etc/NetworkManager/conf.d/90-casthub-p2p.conf 2>/dev/null || true
+nmcli general reload conf && echo "NetworkManager config reloaded"
 
 step "casthub-p2p service"
 install -Dm644 "$repo/system/systemd/casthub-p2p.service" /etc/systemd/system/casthub-p2p.service

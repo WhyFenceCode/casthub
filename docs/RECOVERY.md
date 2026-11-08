@@ -56,8 +56,10 @@ screen: `casthub-display --kill` stops every panel process of your user (SIGTERM
 including a hub left behind by an earlier panel. Display mode's own hub service is left alone.
 
 Wi-Fi misbehaving after installing the receiver? Stop the Wi-Fi Direct service; NetworkManager
-keeps managing Wi-Fi either way. A Wi-Fi Direct cast is an in-memory NM profile,
-`casthub-wifi-direct`; `nmcli connection delete casthub-wifi-direct` ends one by hand.
+keeps managing Wi-Fi either way. casthub-p2p owns each Wi-Fi Direct group (a `p2p-*`
+interface, which NetworkManager leaves alone through `90-casthub-p2p.conf`) and serves DHCP on it;
+stopping the service ends the group. `ip link` shows a leftover `p2p-*` interface; restarting
+wpa_supplicant removes it.
 
 After each cast casthub-p2p re-adds the Wi-Fi interface to wpa_supplicant with a new Wi-Fi Direct
 address (a few seconds without Wi-Fi). If Wi-Fi stays down after that: `nmcli device connect
@@ -67,6 +69,7 @@ back to the radio's own address.
 ```sh
 sudo systemctl disable --now casthub-p2p.service
 sudo rm /etc/systemd/system/casthub-p2p.service /etc/firewalld/zones/casthub-p2p.xml
+sudo rm /etc/NetworkManager/conf.d/90-casthub-p2p.conf && sudo nmcli general reload conf
 sudo systemctl daemon-reload && sudo firewall-cmd --reload
 sudo systemctl restart wpa_supplicant NetworkManager   # clears our P2P settings
 ```

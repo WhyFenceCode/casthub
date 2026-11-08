@@ -741,13 +741,7 @@ class TestDiscovery(unittest.TestCase):
         for _ in range(200):
             self.assertTrue(p2p.wps_pin_valid(p2p.wps_pin()))
 
-    def test_nm_profile(self):
-        args = p2p.nm_profile_args("00:00:5e:00:53:01", bytes.fromhex("000006"), "casthub-p2p")
-        pairs = iter(args[2:])
-        kv = dict(zip(pairs, pairs, strict=True))
-        self.assertEqual(kv["wifi-p2p.peer"], "00:00:5e:00:53:01")
-        self.assertEqual(kv["wifi-p2p.wfd-ies"], "0x000006")
-        self.assertEqual((kv["connection.zone"], kv["save"]), ("casthub-p2p", "no"))
+    def test_mac(self):
         self.assertEqual(p2p.mac(bytes.fromhex("00005e005301")), "00:00:5e:00:53:01")
 
     def test_mice_ip_address_attribute(self):
@@ -790,13 +784,6 @@ class TestDiscovery(unittest.TestCase):
         self.assertFalse(Hub.wants_new_address(hub, first))
 
     def test_peer_address(self):
-        show = ("IP4.ADDRESS[1]:192.0.2.20/24\nIP4.GATEWAY:192.0.2.1\n"
-                "DHCP4.OPTION[3]:dhcp_server_identifier = 192.0.2.10\nDHCP4.OPTION[4]:ip_address = 192.0.2.20\n")
-        self.assertEqual(p2p.peer_from_nm(show), "192.0.2.10")
-        self.assertEqual(p2p.peer_from_nm("IP4.GATEWAY:192.0.2.1\n"), "192.0.2.1")
-        self.assertIsNone(p2p.peer_from_nm("IP4.GATEWAY:--\n"))
-        self.assertEqual(p2p.peer_from_leases("1700000000 00:00:5e:00:53:01 192.0.2.30 pc *\n"), ("192.0.2.30", "pc"))
-        self.assertIsNone(p2p.peer_from_leases(""))
         self.assertEqual(p2p.ipv4(bytes([192, 0, 2, 1])), "192.0.2.1")
         self.assertIsNone(p2p.ipv4(bytes(4)))
         self.assertIsNone(p2p.ipv4(b""))

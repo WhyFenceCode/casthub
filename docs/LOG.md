@@ -285,3 +285,21 @@ Windows cast shows where it stops.
 
 Owner: M4 is done and locked. Single receiver, every screen mirrors it; Windows casts play
 picture and sound (audio fixes above).
+
+## School Wi-Fi, stage 1: Cast Hub owns Wi-Fi Direct groups, 2026-11-08
+
+Owner: at school the receiver shows up but casts don't connect. The school network keeps
+devices apart (no device-to-device traffic), so the network path can't work there, and the
+Wi-Fi Direct fallback crashed the Wi-Fi firmware. Every crash was Cast Hub re-authenticating as
+the *client* of the PC's group after pairing: NetworkManager 1.58 asks with go_intent 7 and
+Windows with 14, so the PC always owned the group.
+- casthub-p2p now pairs with go_intent 15 and owns the group itself: a random /24 in 10/8 that
+  doesn't overlap our Wi-Fi, the casthub-p2p firewall zone, and a small DHCP server
+  (`discovery/dhcp.py`) that tells the hub the PC's address as soon as it leases it.
+- NetworkManager leaves `p2p-*` interfaces alone (`/etc/NetworkManager/conf.d/90-casthub-p2p.conf`)
+  and keeps managing normal Wi-Fi; the `casthub-wifi-direct` NM profile is gone.
+- Tests: DHCP exchange (offer, ack, nak, renewal), the group subnet, Connect with go_intent 15,
+  the group-owner sequence. Live test pending: a Windows cast over Wi-Fi Direct (role GO, no
+  firmware crash), at home and then at school.
+- Next (stage 2): route detection, the hub's own hotspot for iPhones, a loader before the
+  connection instructions.

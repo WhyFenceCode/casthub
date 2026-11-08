@@ -174,10 +174,12 @@ Two transports, one receiver:
 - **Miracast over Infrastructure (MS-MICE):** PC and Chromebook on the same network
   (Windows 10 v1809+). Discovery still needs Wi-Fi on the PC.
 - **Wi-Fi Direct:** fallback when the PC isn't on the same network; also used for discovery,
-  so the radio must support P2P. Push-button pairing (owner, Nov 7): NetworkManager 1.58 removes
-  any P2P group it did not start, and it can only start them with push-button, so NM forms the
-  group from a profile `casthub-p2p` hands it. A PIN shown on the Display screen comes back once
-  Fedora's NM supports PIN pairing (or with network-path PIN + DTLS).
+  so the radio must support P2P. Push-button pairing (owner, Nov 7). Cast Hub owns the group
+  (owner, Nov 8): casthub-p2p answers with go_intent 15, gives the group a /24 of its own in 10/8
+  and serves DHCP to the PC; NetworkManager leaves `p2p-*` interfaces alone (a conf.d drop-in) and
+  keeps normal Wi-Fi. Why: NM 1.58 forms groups with go_intent 7, so Windows (14) owned them,
+  and every iwlwifi firmware crash seen was our side re-authenticating as the group's client. A PIN
+  shown on the Display screen comes back with network-path PIN + DTLS.
 
 Connection sequence, per receiver:
 
@@ -231,7 +233,7 @@ screens.
 | OS | Fedora KDE Plasma (current stable), RPM Fusion codecs, intel-media-driver |
 | Language | Python 3.12+, asyncio throughout, type hints, ruff + pytest |
 | Media | GStreamer via PyGObject: `udpsrc ! rtpmp2tdepay ! tsdemux ! h264parse ! vah264dec ! glimagesink`, audio `aacparse ! avdec_aac ! pipewiresink`. Each cast plays in its own process (`casthub/media/player.py`), which the hub kills when the cast ends, so a stuck video sink can't freeze the hub. The sink offers only video modes in the shape of its screen or window, measured at each cast, so extend mode makes a display of that shape. |
-| Wi-Fi Direct | wpa_supplicant P2P over D-Bus (`dbus-fast`) for discovery; NetworkManager (`nmcli`) forms the group |
+| Wi-Fi Direct | wpa_supplicant P2P over D-Bus (`dbus-fast`) for discovery and the group (Cast Hub is group owner); a small built-in DHCP server for the PC |
 | mDNS | Avahi over D-Bus |
 | Kiosk | Sway, controlled over its IPC socket (`i3ipc`) |
 | AirPlay | UxPlay (Fedora package), one subprocess; its RTP output plays in our player |
@@ -253,6 +255,7 @@ casthub/
     config.py               # load + validate casthub.toml
     hub/                    # screen manager: Sway outputs → receivers
     discovery/p2p.py        # Wi-Fi Direct device + WFD/MS-MICE IEs
+    discovery/dhcp.py       # DHCP for the PC in our Wi-Fi Direct group
     discovery/mdns.py       # _display._tcp records per receiver
     mice/                   # TCP listener, MS-MICE TLV parser
     rtsp/                   # WFD RTSP client, M1–M7 + M16 keepalive

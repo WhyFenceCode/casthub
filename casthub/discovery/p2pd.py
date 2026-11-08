@@ -4,10 +4,15 @@
 
 - Advertises the receiver: P2P device name, WFD IEs (primary sink, available) and the MS-MICE
   vendor extension in Probe Responses, then stays in extended listen so Win + K sees us.
-- Accepts Wi-Fi Direct casts with push-button pairing. NetworkManager forms the group: it
-  removes any group it did not start itself, so we hand it an in-memory wifi-p2p profile for
-  the PC and it does the pairing, the addresses and DHCP. (NM 1.58 has no PIN pairing.)
-- When the PC's address is known, tells the hub where its RTSP server is.
+- Accepts Wi-Fi Direct casts with push-button pairing, as the group owner. We form the group
+  ourselves (wpa_supplicant Connect, go_intent 15), give it a /24 of its own and hand the PC an
+  address (casthub/discovery/dhcp.py). NetworkManager leaves Wi-Fi Direct devices alone
+  (system/networkmanager/casthub-p2p.conf).
+  Why not NetworkManager: it always asks for go_intent 7, so Windows (14) became group owner and
+  we its client; and our client side re-authenticating after push-button pairing crashed the
+  Intel Wi-Fi firmware every time it failed (NMI_INTERRUPT_UMAC_FATAL). As group owner we never
+  make that request.
+- When the PC has its address, tells the hub where its RTSP server is.
 
 - Gives the radio a new random Wi-Fi Direct address when the hub asks (each new receiver name),
   so Windows treats us as a new display. wpa_supplicant only picks that address when it sets up
@@ -22,6 +27,7 @@ import argparse
 import asyncio
 import contextlib
 import grp
+import ipaddress
 import json
 import logging
 import os
@@ -33,7 +39,7 @@ from dbus_fast import BusType, Message, MessageType, Variant
 from dbus_fast.aio import MessageBus
 
 from casthub import config as cfgmod
-from casthub.discovery import p2p
+from casthub.discovery import dhcp, p2p
 
 log = logging.getLogger("casthub.p2p")
 WPAS = "fi.w1.wpa_supplicant1"
@@ -44,10 +50,10 @@ WPS = f"{IFACE}.WPS"
 PROPS = "org.freedesktop.DBus.Properties"
 RUN = Path("/run/casthub")
 SOCK = RUN / "p2p.sock"
-NM_LEASES = Path("/var/lib/NetworkManager")    # dnsmasq-<group if>.leases when we are GO
 PAIR_TIMEOUT_S = 60          # give up on a Wi-Fi Direct pairing after this
-PAIR_RETRY_AFTER_S = 3       # a repeated request from the PC this long after ours restarts NM
+PAIR_RETRY_AFTER_S = 3       # a repeated request from the PC this long after ours: answer it again
 PAIR_RESTARTS = 4
+GO_INTENT = 15               # always the group owner (see the module notes)
 INVITE_FALLBACK_S = 10        # after refusing an invitation, wait this long for the PC to pair afresh
 ZONE = "casthub-p2p"            # firewalld zone (system/firewalld/casthub-p2p.xml): DHCP + RTP
 ROOT = "/fi/w1/wpa_supplicant1"
@@ -74,7 +80,9 @@ class P2PDaemon:
         self.port = cfg.miracast_base_port
         self.clients: set[asyncio.StreamWriter] = set()
         self.group_if = ""
-        self.connecting = False            # NM is pairing with a PC (one at a time)
+        self.group_path = ""               # wpa_supplicant object of the group interface
+        self.dhcp: dhcp.Server | None = None
+        self.connecting = False            # pairing with a PC (one at a time)
         self.pair_started = 0.0
         self.pair_restarts = 0
         self.pair_watch: asyncio.Task | None = None
@@ -306,7 +314,7 @@ class P2PDaemon:
             await self.set(self.dev, P2PDEV, "P2PDeviceConfig", "a{sv}", conf)
         with contextlib.suppress(RuntimeError):     # sink, session *not* available
             await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", p2p.wfd_subelements(available=False))
-        await self.nmcli("connection", "delete", p2p.NM_PROFILE)     # ends a Wi-Fi Direct cast, if any
+        await self.close_group()                                     # ends a Wi-Fi Direct cast, if any
         if self.saved_methods is not None:
             with contextlib.suppress(RuntimeError):
                 await self.set(self.dev, WPS, "ConfigMethods", "s", self.saved_methods)
@@ -409,13 +417,9 @@ class P2PDaemon:
         return proc.returncode or 0, out.decode(errors="replace")
 
     async def pair(self, peer: str) -> None:
-        """Have NetworkManager connect to this PC (push-button). NM ends up GO or client;
-        on_group_started then finds the PC's address.
-
-        NM's connect call to wpa_supplicant can fail at once ("unspecified error") when it
-        lands right on the PC's request, and NM then just waits 45 s while refusing the PC's
-        retries. So we don't wait on NM: if the PC asks again before a group forms, we
-        restart NM's attempt, which then answers the PC's new request."""
+        """Answer the PC's push-button pairing as group owner (go_intent 15): wpa_supplicant
+        forms the group, on_group_started serves it. If the PC asks again before the group
+        forms (our answer crossed its retry), we answer again."""
         if not self.advertising:
             return
         now = time.monotonic()
@@ -423,8 +427,8 @@ class P2PDaemon:
             if now - self.pair_started > PAIR_RETRY_AFTER_S and self.pair_restarts < PAIR_RESTARTS:
                 self.pair_restarts += 1
                 self.pair_started = now
-                log.info("the PC asked again before Wi-Fi Direct formed; restarting NetworkManager's attempt")
-                await self.nmcli("--wait", "0", "connection", "up", p2p.NM_PROFILE)
+                log.info("the PC asked again before Wi-Fi Direct formed; answering again")
+                await self.connect(peer)
             return
         self.connecting, self.pair_started, self.pair_restarts = True, now, 0
         try:
@@ -432,21 +436,21 @@ class P2PDaemon:
                 port = p2p.parse_wfd_rtsp_port(bytes(await self.get(peer, PEER, "IEs")))
                 if port:
                     self.peers[peer] = port
-            addr = p2p.mac(bytes(await self.get(peer, PEER, "DeviceAddress")))
-            await self.nmcli("connection", "delete", p2p.NM_PROFILE)
-            rc, out = await self.nmcli(*p2p.nm_profile_args(addr, p2p.wfd_subelements(), ZONE))
-            if rc:
-                log.warning("could not add the Wi-Fi Direct profile: %s", out.strip()[:200])
-                self.connecting = False
-                return
-            log.info("pairing with the PC through NetworkManager (push-button)")
-            rc, out = await self.nmcli("--wait", "0", "connection", "up", p2p.NM_PROFILE)
-            if rc:
-                log.warning("NetworkManager would not start Wi-Fi Direct: %s", out.strip()[:200])
+            log.info("pairing with the PC as group owner (push-button)")
+            await self.connect(peer)
         except Exception:
             self.connecting = False
             raise
         self.pair_watch = asyncio.create_task(self._guard(self.pair_deadline(self.pair_started)))
+
+    async def connect(self, peer: str) -> None:
+        args = {"peer": Variant("o", peer), "wps_method": Variant("s", "pbc"),
+                "go_intent": Variant("i", GO_INTENT), "persistent": Variant("b", False),
+                "join": Variant("b", False)}
+        try:
+            await self.call(self.dev, P2PDEV, "Connect", "a{sv}", [args])
+        except RuntimeError as e:
+            log.warning("Wi-Fi Direct connect: %s", e)
 
     async def pair_deadline(self, started: float) -> None:
         await asyncio.sleep(PAIR_TIMEOUT_S)
@@ -457,17 +461,60 @@ class P2PDaemon:
 
     async def on_group_started(self, props: dict):
         role = props.get("role", Variant("s", "")).value
-        ifpath = props["interface_object"].value
-        self.group_if = await self.get(ifpath, IFACE, "Ifname")
+        self.group_path = props["interface_object"].value
+        self.group_if = await self.get(self.group_path, IFACE, "Ifname")
         self.connecting = False
         log.info("group started, role %s", role)
-        # As client, the PC (GO) usually hands out addresses in the 4-way handshake (EAPOL IP
-        # allocation): no DHCP, and wpa_supplicant tells us the GO's address right here.
+        if role == "GO":
+            await self.serve_group(self.group_if)
+            return
+        # Client only if the PC insisted on owning the group too (go_intent 15 on both sides).
+        # Then the PC usually hands both addresses out in the 4-way handshake (EAPOL IP).
         go_ip = p2p.ipv4(bytes(props["IpAddrGo"].value)) if "IpAddrGo" in props else None
-        if role != "GO" and go_ip:
+        own = p2p.ipv4(bytes(props["IpAddr"].value)) if "IpAddr" in props else None
+        mask = p2p.ipv4(bytes(props["IpAddrMask"].value)) if "IpAddrMask" in props else None
+        if go_ip and own and mask:
+            prefix = ipaddress.IPv4Network(f"0.0.0.0/{mask}").prefixlen
+            await self.run("ip", "addr", "add", f"{own}/{prefix}", "dev", self.group_if)
+            await self.firewall_zone(self.group_if)
             self.announce(go_ip, "")
             return
-        asyncio.ensure_future(self._guard(self.find_peer(role)))
+        log.warning("the PC owns the group and gave us no address; ending it")
+        await self.end_session()
+
+    async def serve_group(self, ifname: str) -> None:
+        """Our group: a /24 of its own, the firewall zone for casts, DHCP for the PC."""
+        in_use = list(self.mice_addresses)
+        with contextlib.suppress(Exception):
+            in_use += await self.wifi_addresses()
+        net = p2p.group_network(in_use)
+        ours = str(net[1])
+        await self.run("ip", "addr", "add", f"{ours}/{net.prefixlen}", "dev", ifname)
+        await self.run("ip", "link", "set", ifname, "up")
+        await self.firewall_zone(ifname)
+        self.dhcp = dhcp.Server(ifname, dhcp.Pool(str(net), ours), lambda ip, _mac, host: self.announce(ip, host))
+        try:
+            await self.dhcp.start()
+        except OSError as e:
+            log.error("DHCP for the Wi-Fi Direct group: %s", e)
+
+    async def firewall_zone(self, ifname: str) -> None:
+        rc, out = await self.run("firewall-cmd", f"--zone={ZONE}", f"--change-interface={ifname}")
+        if rc:
+            log.warning("firewall zone for %s: %s", ifname, out.strip()[:200])
+
+    async def run(self, *cmd: str, timeout: float = 10) -> tuple[int, str]:
+        try:
+            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE,
+                                                        stderr=asyncio.subprocess.STDOUT)
+        except OSError as e:
+            return 127, str(e)
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout)
+        except TimeoutError:
+            proc.kill()
+            return 124, "timed out"
+        return proc.returncode or 0, out.decode(errors="replace")
 
     def announce(self, addr: str, name: str) -> None:
         if addr in self.announced:
@@ -477,45 +524,30 @@ class P2PDaemon:
         log.info("PC reachable over Wi-Fi Direct (RTSP port %d); telling the hub", port)
         self.broadcast({"event": "source", "addr": addr, "rtsp_port": port, "name": name})
 
-    async def nm_p2p_device(self) -> str:
-        rc, out = await self.nmcli("-t", "-f", "DEVICE,TYPE", "device")
-        for line in out.splitlines():
-            dev, _, typ = line.rpartition(":")
-            if typ == "wifi-p2p":
-                return dev.replace("\\:", ":")
-        return ""
-
-    async def find_peer(self, role: str) -> None:
-        """Wait for NM to finish addressing, then announce the PC to the hub."""
-        nmdev = await self.nm_p2p_device()
-        for _ in range(60):
-            await asyncio.sleep(0.5)
-            found: tuple[str, str] | None = None
-            if role == "GO":
-                with contextlib.suppress(OSError):
-                    found = p2p.peer_from_leases((NM_LEASES / f"dnsmasq-{self.group_if}.leases").read_text())
-            elif nmdev:
-                _, out = await self.nmcli("-t", "-f", "IP4,DHCP4", "device", "show", nmdev)
-                addr = p2p.peer_from_nm(out)
-                found = (addr, "") if addr else None
-            if found:
-                self.announce(*found)
-                return
-        log.warning("Wi-Fi Direct is up but the PC's address never appeared")
-
     async def on_group_finished(self, props: dict):
         log.info("group finished")
         self.connecting = False
+        self.group_path = ""          # already gone
         await self.end_session()
+
+    async def close_group(self) -> None:
+        """Stop serving our group and end it (wpa_supplicant removes its interface)."""
+        if self.dhcp:
+            self.dhcp.stop()
+            self.dhcp = None
+        if self.group_path:
+            path, self.group_path = self.group_path, ""
+            with contextlib.suppress(RuntimeError):
+                await self.call(path, P2PDEV, "Disconnect")
 
     async def end_session(self) -> None:
         for addr in self.announced:
             self.broadcast({"event": "gone", "addr": addr})
         self.announced.clear()
         self.peers.clear()
-        await self.nmcli("connection", "delete", p2p.NM_PROFILE)
+        await self.close_group()
         await self.forget_groups()
-        if self.advertising:          # NM clears the WFD IEs when its P2P connection ends
+        if self.advertising:          # the group's end clears the WFD IEs
             with contextlib.suppress(RuntimeError):
                 await self.advertise()
 
