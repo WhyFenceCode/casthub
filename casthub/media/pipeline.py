@@ -46,6 +46,10 @@ class MediaSpec:
 
 
 STATS_S = 5
+# (counter, element, pad): network → jitter buffer → RTP unwrap → demuxed video/audio → parsed → shown
+STAGES = [("net", "src", "src"), ("jitter", "jb", "src"), ("rtp-out", "depay", "src"),
+          ("video-demuxed", "vq", "sink"), ("audio-demuxed", "aq", "sink"), ("parsed", "vparse", "src"),
+          ("shown", "vsink", "sink")]
 
 
 def describe(spec: MediaSpec) -> str:
@@ -61,9 +65,9 @@ def describe(spec: MediaSpec) -> str:
             sink += f" fullscreen-output={spec.output}"
     parts = [
         f'udpsrc name=src port={spec.rtp_port} buffer-size=2097152 caps="{caps}"',
-        f"rtpjitterbuffer latency={spec.latency_ms} drop-on-latency=true",
-        "rtpmp2tdepay", "tsdemux name=demux latency=0",
-        "demux. ! video/x-h264 ! queue max-size-time=0 max-size-bytes=0 max-size-buffers=64 ! h264parse name=vparse"
+        f"rtpjitterbuffer name=jb latency={spec.latency_ms}",
+        "rtpmp2tdepay name=depay", "tsdemux name=demux latency=0",
+        "demux. ! video/x-h264 ! queue name=vq max-size-time=0 max-size-bytes=0 max-size-buffers=64 ! h264parse name=vparse"
         f" ! {spec.decoder} ! {sink} name=vsink",
     ]
     desc = " ! ".join(parts[:4]) + " " + parts[4]
@@ -71,7 +75,7 @@ def describe(spec: MediaSpec) -> str:
         # tsdemux feeds audio and video from one thread: if audio backs up, video stops too
         # (the picture froze after 2 frames). So audio never waits on the PC's timestamps, and
         # its queue drops old audio rather than block the demuxer.
-        desc += (f" demux. ! audio/mpeg ! queue leaky=downstream max-size-time=500000000 ! aacparse ! avdec_aac"
+        desc += (f" demux. ! audio/mpeg ! queue name=aq leaky=downstream max-size-time=500000000 ! aacparse ! avdec_aac"
                  f" ! audioconvert ! audioresample ! {spec.audio_sink} name=asink sync=false")
     return desc
 
@@ -90,9 +94,8 @@ class Pipeline:
         self.pipe = None
         self._poll: asyncio.Task | None = None
         self._seen_frame = False
-        self.packets = 0            # RTP packets from the network
-        self.frames_in = 0          # H.264 frames out of the parser (counted on the streaming thread)
-        self.frames_shown = 0       # decoded frames that reached the video sink
+        self.counts = dict.fromkeys([name for name, _, _ in STAGES], 0)   # bumped on streaming threads
+        self.caps_logged = False
 
     def start(self) -> None:
         g = gst()
@@ -105,23 +108,24 @@ class Pipeline:
             asink.set_property("client-name", self.spec.title)
 
         def shown(_pad, _info):
-            self.frames_shown += 1
+            self.counts["shown"] += 1
             if not self._seen_frame:
                 self._seen_frame = True
                 loop.call_soon_threadsafe(self.on_first_frame)
             return g.PadProbeReturn.OK
 
-        def received(_pad, _info):
-            self.packets += 1
-            return g.PadProbeReturn.OK
+        def counter(stage):
+            def probe(_pad, _info):
+                self.counts[stage] += 1
+                return g.PadProbeReturn.OK
+            return probe
 
-        def parsed(_pad, _info):
-            self.frames_in += 1
-            return g.PadProbeReturn.OK
-
+        # Every stage counts what passes it, so a frozen picture shows where data stops.
         self.pipe.get_by_name("vsink").get_static_pad("sink").add_probe(g.PadProbeType.BUFFER, shown)
-        self.pipe.get_by_name("vparse").get_static_pad("src").add_probe(g.PadProbeType.BUFFER, parsed)
-        self.pipe.get_by_name("src").get_static_pad("src").add_probe(g.PadProbeType.BUFFER, received)
+        for stage, element, pad in STAGES:
+            el = self.pipe.get_by_name(element)
+            if el is not None and stage != "shown":
+                el.get_static_pad(pad).add_probe(g.PadProbeType.BUFFER, counter(stage))
         if self.pipe.set_state(g.State.PLAYING) == g.StateChangeReturn.FAILURE:
             why = "pipeline did not start"
             bus = self.pipe.get_bus()
@@ -137,17 +141,29 @@ class Pipeline:
             raise RuntimeError(why)
         self._poll = asyncio.create_task(self._watch())
 
+    def jitter_stats(self) -> str:
+        jb = self.pipe.get_by_name("jb") if self.pipe else None
+        if jb is None:
+            return "-"
+        st = jb.get_property("stats")
+        return " ".join(f"{k.removeprefix('num-')}={st.get_value(k)}"
+                        for k in ("num-pushed", "num-lost", "num-late", "num-duplicates") if st.has_field(k))
+
     async def _watch(self) -> None:
         g = gst()
         bus = self.pipe.get_bus()
         mask = g.MessageType.ERROR | g.MessageType.EOS | g.MessageType.WARNING
         loop = asyncio.get_running_loop()
-        next_stats, last = loop.time() + STATS_S, (0, 0, 0)
+        next_stats, last = loop.time() + STATS_S, {}
         while self.pipe is not None:
-            if loop.time() >= next_stats:          # where frames stop, if the picture freezes
-                now = (self.packets, self.frames_in, self.frames_shown)
-                log.info("video: %d packets, %d frames in, %d shown in the last %d s",
-                         *(a - b for a, b in zip(now, last, strict=True)), STATS_S)
+            if loop.time() >= next_stats:          # where data stops, if the picture freezes
+                now = dict(self.counts)
+                log.info("media in the last %d s: %s | jitterbuffer %s", STATS_S,
+                         ", ".join(f"{k} {now[k] - last.get(k, 0)}" for k in now), self.jitter_stats())
+                if not self.caps_logged and now["parsed"]:
+                    self.caps_logged = True
+                    caps = self.pipe.get_by_name("vparse").get_static_pad("src").get_current_caps()
+                    log.info("video caps: %s", caps.to_string() if caps else "?")
                 next_stats, last = loop.time() + STATS_S, now
             msg = bus.pop_filtered(mask)
             if msg is None:
