@@ -172,3 +172,79 @@ def sink_parameters(width: int, height: int, rtp_port: int, name: str) -> dict[s
         "intel_sink_version": "1.0.0",
         "intel_sink_device_URL": "none",
     }
+
+
+# ---- source side (M10 passthrough: Cast Hub sends to a TV) --------------------------------
+@dataclass(frozen=True)
+class Mode:
+    table: str
+    index: int
+    width: int
+    height: int
+    fps: int
+
+
+def parse_sink_video_formats(value: str) -> tuple[list[Mode], int, int]:
+    """A sink's `wfd_video_formats` (M3 reply) → (progressive modes it supports, profile bits,
+    level bits). Several H.264 entries are merged (comma-separated after the first two fields)."""
+    parts = value.replace(",", " ").split()
+    if len(parts) < 7:
+        raise WfdError(f"short wfd_video_formats {value!r}")
+    modes: dict[tuple[str, int], Mode] = {}
+    profiles = levels = 0
+    entries = parts[2:]
+    while len(entries) >= 5:
+        try:
+            profile, level = int(entries[0], 16), int(entries[1], 16)
+            masks = [int(x, 16) for x in entries[2:5]]
+        except ValueError as e:
+            raise WfdError(f"bad wfd_video_formats {value!r}") from e
+        profiles |= profile
+        levels |= level
+        for name, mask in zip(("CEA", "VESA", "HH"), masks, strict=True):
+            for i, (w, h, fps, interlaced) in enumerate(TABLES[name]):
+                if mask >> i & 1 and not interlaced:
+                    modes[(name, i)] = Mode(name, i, w, h, fps)
+        entries = entries[11:]              # profile level cea vesa hh latency slice slice-enc fr-ctl max-h max-v
+    modes.setdefault(("CEA", 0), Mode("CEA", 0, 640, 480, 60))     # mandatory for every sink
+    return list(modes.values()), profiles, levels
+
+
+def choose_mode(modes: list[Mode], max_size: tuple[int, int] = (1920, 1080), max_fps: int = 30) -> Mode:
+    """The mode we send: the biggest that fits max_size, preferring 16:9, then the highest frame
+    rate up to max_fps (30 keeps the encoder and the TV's link comfortable), else the lowest above."""
+    fit = [m for m in modes if m.width <= max_size[0] and m.height <= max_size[1]] or modes
+
+    def key(m: Mode):
+        wide = abs(m.width / m.height - 16 / 9) < 0.03
+        fps_ok = m.fps <= max_fps
+        return (m.width * m.height, wide, fps_ok, m.fps if fps_ok else -m.fps)
+    return max(fit, key=key)
+
+
+def source_video_format(mode: Mode, profiles: int, levels: int) -> str:
+    """Our M4 `wfd_video_formats`: exactly one mode bit, CHP if the sink has it, else CBP."""
+    profile = 0x02 if profiles & 0x02 else 0x01
+    level = LEVEL_42 if levels & LEVEL_42 else (levels & -levels or 0x01)     # 4.2 if offered, else the lowest
+    masks = {"CEA": 0, "VESA": 0, "HH": 0}
+    masks[mode.table] = 1 << mode.index
+    return (f"00 00 {profile:02x} {level:02x} {masks['CEA']:08x} {masks['VESA']:08x} {masks['HH']:08x}"
+            " 00 0000 0000 00 none none")
+
+
+def choose_audio(value: str) -> tuple[str, AudioFormat] | None:
+    """A sink's `wfd_audio_codecs` → our M4 value and format: AAC 48 kHz stereo if offered, else
+    LPCM 48 kHz stereo (every sink must take LPCM), None if the sink has no audio."""
+    if not value or value.strip() == "none":
+        return None
+    offered = {}
+    for entry in value.split(","):
+        f = entry.split()
+        if len(f) >= 2:
+            with_modes = int(f[1], 16) if all(c in "0123456789abcdefABCDEF" for c in f[1]) else 0
+            offered[f[0].upper()] = with_modes
+    if offered.get("AAC", 0) & 1:
+        return "AAC 00000001 00", AudioFormat("AAC", 48000, 2)
+    if offered.get("LPCM", 0) & 2:
+        return "LPCM 00000002 00", AudioFormat("LPCM", 48000, 2)
+    return "LPCM 00000002 00", AudioFormat("LPCM", 48000, 2)      # mandatory; offered or not

@@ -348,3 +348,16 @@ kiosk, idle/busy screens, leave page); no new work was needed.
   ("Cast Hub Wi-Fi", or "Wi-Fi · offline" when the hub left the network). QR only on hotspot routes.
 - Previews (local only) checked in light and dark. Tests: the name waits for the route, the
   join-code parsing, a later hub hears the route. Live test pending (owner, at school).
+
+## M10 passthrough, stage 1: Cast Hub as a Miracast source, 2026-11-08
+
+Owner decisions (SPEC D29): any cast in → Miracast out; the TV link takes the radio slot (no
+hotspot or incoming Wi-Fi Direct meanwhile); TV only (our screens show a status page); leave page
+plus a `[passthrough]` config spot (admin-fixed target or the user's choice), since Cast Hub is
+heading for offices and lecture halls. Owner has a Miracast TV/projector; nothing tried yet.
+- `rtsp/source.py`: the source side of the handshake (M1 and M3–M5 from us, M6/M7 answered,
+  M16 keepalives, the sink's key-frame requests, teardown either way). `rtsp/wfd.py` reads a
+  sink's formats and picks: the biggest mode up to 1080p, 30 fps preferred, CHP if offered; AAC
+  48 kHz stereo, else LPCM.
+- Tested over loopback against our own sink (`tests/test_source.py`).
+- Next: stage 2, the video out (decode once, scale, VA-API encode, MPEG-TS over RTP).
