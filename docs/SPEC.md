@@ -296,7 +296,7 @@ M1 (Fedora installed) and M2 (Miracast go/no-go connection tests) are done.
 | M7 | Login screen and modes | SDDM theme with Workstation, Display and Console; Display starts with no password; Console only for admins; leaving a mode returns to the login screen |
 | M8 | Branding and graphics | Tokens extracted and confirmed; boot splash, login, desktop, Display screens and leave page match the mockups; one colour change in `brand/tokens.toml` updates all of them after one rebuild |
 | M3 | Repo skeleton + receiver *(done)* | Privacy guardrails; config loader, hub, MICE listener and RTSP handshake; one receiver shows a Windows cast fullscreen (accepted over Wi-Fi Direct; the network path is M4B) |
-| M4 | Multi-port test *(done: single receiver only)* | Two receivers on one radio failed (Win + K lists one receiver per radio), so Cast Hub has one receiver and every screen mirrors it (`mirror_all`) |
+| M4 | Multi-port test *(done, locked: single receiver only)* | Two receivers on one radio failed (Win + K lists one receiver per radio), so Cast Hub has one receiver and every screen mirrors it (`mirror_all`); Windows sound plays at the right speed |
 | M4B | Miracast over the network *(done)* | A Windows cast over the same network (MS-MICE, mDNS, port 7250) plays; M3's acceptance was over Wi-Fi Direct. M4 depends on it |
 | M5 | AirPlay *(done)* | One UxPlay, shown on every screen like Miracast; an iPhone mirrors to the hub |
 | M6 | Kiosk session | Display mode boots to idle screens; busy rule works; Ctrl + Alt + Esc opens the leave page during a stream |

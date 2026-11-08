@@ -280,3 +280,8 @@ Windows cast shows where it stops.
   planar buffers and played them as interleaved: double speed, an octave up. The format now
   pins `layout=interleaved` (checked: pipewiresink's caps change from non-interleaved to
   interleaved). Pitch to be confirmed by ear on the next Windows cast.
+
+## M4 locked (done), 2026-11-08
+
+Owner: M4 is done and locked. Single receiver, every screen mirrors it; Windows casts play
+picture and sound (audio fixes above).
