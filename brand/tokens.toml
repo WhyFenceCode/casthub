@@ -141,6 +141,14 @@ width = 84
 tracking = -0.02
 upper = true
 
+[type.dname]            # the receiver name on that line: letters and digits (CAST-XXXXX) need room
+family = "display"
+size = 56
+weight = 800
+width = 90
+tracking = 0.06
+upper = true
+
 [type.dplace]
 family = "text"
 size = 30

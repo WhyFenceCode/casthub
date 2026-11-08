@@ -48,6 +48,7 @@ QtObject {
     readonly property var label: ({ family: "DM Mono", size: 9.2, weight: 400, width: 100, tracking: 0.11, upper: true })
     readonly property var dclock: ({ family: "Bricolage Grotesque", size: 262, weight: 800, width: 78, tracking: -0.03, upper: false })
     readonly property var ddate: ({ family: "Bricolage Grotesque", size: 56, weight: 800, width: 84, tracking: -0.02, upper: true })
+    readonly property var dname: ({ family: "Bricolage Grotesque", size: 56, weight: 800, width: 90, tracking: 0.06, upper: true })
     readonly property var dplace: ({ family: "Instrument Sans", size: 30, weight: 400, width: 100, tracking: 0, upper: false })
     readonly property var dbody: ({ family: "Instrument Sans", size: 14.5, weight: 400, width: 100, tracking: 0, upper: false })
     readonly property var dlabel: ({ family: "DM Mono", size: 11.2, weight: 400, width: 100, tracking: 0.15, upper: true })

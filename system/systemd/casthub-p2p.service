@@ -12,7 +12,9 @@ RuntimeDirectoryPreserve=yes
 NoNewPrivileges=yes
 ProtectHome=yes
 ProtectSystem=strict
-ReadWritePaths=/run/casthub
+# /run/NetworkManager: the wpa_supplicant config with a new Wi-Fi Direct address (p2pd.new_address);
+# wpa_supplicant (SELinux NetworkManager_t) can read files there.
+ReadWritePaths=/run/casthub /run/NetworkManager
 PrivateTmp=yes
 
 [Install]

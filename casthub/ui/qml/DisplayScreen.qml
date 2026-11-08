@@ -90,7 +90,8 @@ Rectangle {
             id: dateLine
             x: root.margin
             y: 435 * root.uy - baselineOffset
-            u: root.u; tok: t; textStyle: t.ddate
+            u: root.u; tok: t
+            textStyle: root.pinCode || root.screenState === "connecting" ? t.ddate : t.dname
             color: root.pinCode || root.screenState === "connecting" ? t.muted : t.fg
             text: root.pinCode ? "Type this PIN on your PC"
                   : root.screenState === "connecting" ? "Connecting…"

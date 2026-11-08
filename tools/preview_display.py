@@ -24,7 +24,7 @@ from PySide6.QtQuick import QQuickView  # noqa: E402
 from casthub.ui.qr import QrProvider  # noqa: E402
 
 FAKE = {
-    "receiverName": "Brand-1",
+    "receiverName": os.environ.get("PREVIEW_NAME", "Brand-1"),
     "location": "Springfield, Region",
     "coordinates": "12.34° N · 56.78° W",
     "qrPayload": "WIFI:T:WPA;S:<ssid>;P:<placeholder>;;",
