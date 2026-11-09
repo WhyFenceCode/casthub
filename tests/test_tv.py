@@ -17,6 +17,9 @@ class TestDescriptions(unittest.TestCase):
         self.assertIn("mux.sink_4113", d)                                # WFD video PID 0x1011
         self.assertIn("mux.sink_4352", d)                                # WFD audio PID 0x1100
         self.assertIn("udpsink name=out host=192.0.2.10 port=1028", d)
+        self.assertIn("PMT_1=(uint)256", d)                              # WFD program map PID 0x0100
+        self.assertIn("aud=true", d)                                     # access unit delimiters
+        self.assertIn("rtpmp2tpay name=pay pt=33", d)                    # MP2T's static payload type
         base = describe_sender(TvTarget("192.0.2.10", 1028, 640, 480, 60, profile="constrained-baseline", audio=""))
         self.assertIn("cabac=false", base)
         self.assertNotIn("interaudiosrc", base)

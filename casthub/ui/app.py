@@ -207,6 +207,10 @@ class DisplayUI(QObject):
         cmd = {"tv_find": {"cmd": "tv_find"}, "tv_off": {"cmd": "tv_off"}}.get(action) or {"cmd": "tv_on", "name": name}
         if cmd["cmd"] == "tv_find":
             self.set_all("searching", True)
+        if cmd["cmd"] in ("tv_on", "tv_off"):
+            # Picked (or turned off): straight back to the Display screen, where the ways to
+            # connect a phone are; its status line follows the TV (owner, Nov 9).
+            self.set_all("leaveOpen", False)
         log.info("passthrough: %s", cmd["cmd"])
 
         def done(reply: dict) -> None:

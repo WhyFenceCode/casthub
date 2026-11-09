@@ -465,3 +465,12 @@ heading for offices and lecture halls. Owner has a Miracast TV/projector; nothin
   and minute. The sender loops them between casts and while a cast connects, until its first
   frame. Checked: renders light and dark at 1080p (previews local), the card reaches the TV
   channel at 30 fps. Tests for each part.
+- Live test 7: still black, with cast frames reaching the sender. A capture showed the TV's
+  RTCP to our ports 7237-7238 refused by the group zone. Changes: the zone opens those ports and
+  the RTSP source logs the TV's receiver reports (loss, jitter) every 5 s; the transport stream
+  now follows WFD more closely (program map on PID 0x0100, access unit delimiters, RTP payload
+  type 33) at 5 Mbit/s for the 2.4 GHz link. A local loopback decodes the waiting card from it.
+- Owner: after picking a TV, getting back to the phone instructions took too many steps. Picking
+  a TV (or turning it off) now closes the leave page on every screen. The Display screen's status
+  line says "Connecting to <TV>…", "Couldn't reach <TV>", then "Casts go to <TV>", beside the
+  ways to connect a phone (not on the TV's own card). Tests and a preview (tv-joining).

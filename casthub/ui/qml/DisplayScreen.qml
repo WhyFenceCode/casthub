@@ -28,6 +28,15 @@ Rectangle {
     property var passthrough: ({ state: "off", tv: "", why: "", tvs: [], locked: false, allowed: true })
     property bool searching: false
     readonly property bool onTv: tvName !== "" && screenState === "streaming"
+    // Passthrough on its way (the leave page closes once a TV is picked): say so here, next to
+    // the ways to connect, so a phone can be added straight away. Not on the TV's own screen.
+    readonly property string tvStatus: {
+        var p = passthrough || {}
+        if (tvCard || !p.tv) return ""
+        if (p.state === "searching" || p.state === "connecting") return dotted("Connecting to " + p.tv)
+        if (p.state === "failed") return "Couldn't reach " + p.tv
+        return ""
+    }
 
     // ---- leave page (Ctrl+Alt+Esc), drawn on top of this screen ----------------
     property bool leaveOpen: false
@@ -160,7 +169,8 @@ Rectangle {
                 text: root.pinCode ? "Pairing" : root.onTv ? "Showing on the TV"
                       : root.screenState === "connecting" ? root.dotted("Connecting")
                       : !root.receiverName ? root.dotted("Getting ready")
-                      : root.tvName ? "Casts go to " + root.tvName : "Waiting for a device"
+                      : root.tvName ? "Casts go to " + root.tvName
+                      : root.tvStatus ? root.tvStatus : "Waiting for a device"
             }
             Label {
                 y: 24 * root.uy - height / 2

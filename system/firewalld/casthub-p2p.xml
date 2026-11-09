@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Wi-Fi Direct group interfaces while a PC casts over Wi-Fi Direct (casthub-p2p owns the group).
      Only what the cast needs: DHCP for the PC (served by casthub-p2p), and the RTP ports the receivers listen on.
-     Passthrough (M10): the TV in our group connects to our Miracast source's RTSP port, 7236. -->
+     Passthrough (M10): the TV in our group connects to our Miracast source's RTSP port, 7236,
+     and sends its RTCP receiver reports to 7237-7238. -->
 <zone>
   <short>Cast Hub Wi-Fi Direct</short>
   <description>A PC casting to Cast Hub over Wi-Fi Direct.</description>
   <service name="dhcp"/>
   <port protocol="udp" port="1028-1099"/>
   <port protocol="tcp" port="7236"/>
+  <port protocol="udp" port="7237-7238"/>
 </zone>

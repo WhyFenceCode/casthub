@@ -13,7 +13,8 @@ media/pipeline.py with `tv` set) decodes, scales to the TV's mode with black bor
 frames and audio over through the inter elements: so it must run in this same process. TV only:
 nothing plays on our screens or speakers meanwhile.
 
-WFD wants fixed PIDs: video 0x1011, audio 0x1100 (mpegtsmux pads named sink_<pid>).
+WFD wants fixed PIDs: video 0x1011, audio 0x1100 (mpegtsmux pads named sink_<pid>), the program
+map on 0x0100. A real TV took our first stream (PMT on mpegtsmux's default PID) and showed nothing.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from casthub.media import pipeline as media
 
 log = logging.getLogger("casthub.media")
 VIDEO_PID, AUDIO_PID = 0x1011, 0x1100
+PMT_PID = 0x0100                  # WFD's program map PID (program 1), as Android's source sends it
 KEYFRAME_EVERY_S = 1              # a TV that joins late or loses packets recovers within a second
 
 
@@ -40,7 +42,7 @@ class TvTarget:
     fps: int
     profile: str = "constrained-high"      # or constrained-baseline (from the handshake)
     audio: str = "AAC"                     # AAC | LPCM | "" (none)
-    bitrate_kbps: int = 8000
+    bitrate_kbps: int = 5000              # the TV link is 2.4 GHz, sharing the radio with our Wi-Fi
 
     @property
     def tv(self) -> str:
@@ -62,13 +64,14 @@ def describe_sender(t: TvTarget) -> str:
     """gst-launch description of the sender pipeline."""
     baseline = t.profile == "constrained-baseline"
     enc = (f"vah264enc name=enc rate-control=cbr bitrate={t.bitrate_kbps} key-int-max={t.fps * KEYFRAME_EVERY_S}"
-           f" b-frames=0{' cabac=false' if baseline else ''}")
+           f" b-frames=0 aud=true{' cabac=false' if baseline else ''}")     # AUDs: TVs split frames by them
     video = (f"intervideosrc channel={media.TV_CHANNEL} name=vsrc"
              f" ! video/x-raw,format=NV12,width={t.width},height={t.height},framerate={t.fps}/1,pixel-aspect-ratio=1/1"
              f" ! queue max-size-buffers=4 leaky=downstream ! vapostproc ! {enc}"
              f" ! video/x-h264,profile={'constrained-baseline' if baseline else 'high'},stream-format=byte-stream"
              f" ! h264parse config-interval=-1 ! queue ! mux.sink_{VIDEO_PID}")
-    out = (f" mpegtsmux name=mux alignment=7 ! rtpmp2tpay name=pay"
+    progs = f"program_map,sink_{VIDEO_PID}=(int)1,sink_{AUDIO_PID}=(int)1,PMT_1=(uint){PMT_PID}"
+    out = (f" mpegtsmux name=mux alignment=7 prog-map=\"{progs}\" ! rtpmp2tpay name=pay pt=33"
            f" ! udpsink name=out host={t.host} port={t.port} sync=false async=false")
     audio = ""
     if t.audio == "AAC":

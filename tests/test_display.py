@@ -193,6 +193,31 @@ class TestLeavePageMenus(unittest.TestCase):
         root.choose(1)                                   # Passthrough setup opens the TV view
         self.assertEqual(root.property("view"), "passthrough")
 
+    def test_tv_status_on_the_display_screen(self):
+        """Once a TV is picked the leave page closes; the main screen says how the TV is doing,
+        next to the ways to connect a phone (but not on the TV's own card)."""
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQuick import QQuickView
+
+        QGuiApplication.instance() or QGuiApplication([])
+        out = {}
+        for card in (False, True):
+            v = QQuickView()
+            v.setInitialProperties({"tvCard": card, "receiverName": "Brand-1"})
+            v.setSource(QUrl.fromLocalFile(str(ROOT / "casthub" / "ui" / "qml" / "DisplayScreen.qml")))
+            self.assertEqual(v.errors(), [])
+            self.addCleanup(v.deleteLater)
+            root = v.rootObject()
+            for state in ("connecting", "failed", "on"):
+                root.setProperty("passthrough", {"state": state, "tv": "<tv>", "why": "", "tvs": [],
+                                                 "locked": False, "allowed": True})
+                out[card, state] = root.property("tvStatus")
+        self.assertTrue(out[False, "connecting"].startswith("Connecting to <tv>"))
+        self.assertEqual(out[False, "failed"], "Couldn't reach <tv>")
+        self.assertEqual(out[False, "on"], "")                       # then tvName: "Casts go to <tv>"
+        self.assertEqual(out[True, "connecting"], "")
+
     def test_panel_without_passthrough(self):
         ids, _ = self.actions(panel=True, passthrough={"state": "off", "tv": "", "why": "", "tvs": [],
                                                        "locked": False, "allowed": False})

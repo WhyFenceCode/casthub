@@ -65,7 +65,7 @@ def main() -> int:
     ap.add_argument("--size", default="1080x633")
     ap.add_argument("--scheme", default="light", choices=["light", "dark"])
     ap.add_argument("--only", help="screen name to render (idle, loading, hotspot, alone, connecting, busy, pin, "
-                                   "leave, panel-leave, tv, passthrough)")
+                                   "leave, panel-leave, tv, tv-joining, passthrough)")
     a = ap.parse_args()
     w, h = (int(v) for v in a.size.split("x"))
     app = QGuiApplication(sys.argv)
@@ -87,6 +87,8 @@ def main() -> int:
         "leave": ("leave", {"selected": 0}),
         "panel-leave": ("leave", {"selected": 0, "panel": True}),
         "tv": ("screen", {"screenState": "streaming", "deviceName": "Pixel Phone", "tvName": "Example-TV-AKGDJ"}),
+        "tv-joining": ("screen", {"passthrough": {"state": "connecting", "tv": "Example-TV-AKGDJ", "why": "",
+                                                  "tvs": [], "locked": False, "allowed": True}}),
         "passthrough": ("leave", {"view": "passthrough", "selected": 0, "passthrough": {
             "state": "on", "tv": "Example-TV-AKGDJ", "why": "", "tvs": ["Example-TV-AKGDJ", "Projector 2"],
             "locked": False, "allowed": True}}),

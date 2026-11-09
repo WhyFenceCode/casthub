@@ -33,6 +33,50 @@ WFD_URI = "rtsp://localhost/wfd1.0"
 DEFAULT_PORT = 7236
 SESSION_TIMEOUT_S = 30              # in our SETUP answer; the sink expects M16 within it
 KEEPALIVE_S = 20
+RTCP_LOG_S = 5              # the sink's receiver reports: at most one log line per this
+
+
+@dataclass(frozen=True)
+class ReceiverReport:
+    fraction_lost: float     # 0-1, since the sink's previous report
+    lost: int                # packets lost in all
+    highest_seq: int
+    jitter: int              # RTP timestamp units (90 kHz)
+
+
+def parse_rtcp(data: bytes) -> ReceiverReport | None:
+    """The first report block of an RTCP receiver report (RFC 3550 6.4.2), or None."""
+    i = 0
+    while i + 4 <= len(data):
+        if data[i] >> 6 != 2:
+            return None
+        count, pt = data[i] & 0x1F, data[i + 1]
+        length = (int.from_bytes(data[i + 2:i + 4], "big") + 1) * 4
+        if pt == 201 and count and i + 8 + 24 <= len(data):        # RR: header, SSRC, then blocks
+            b = data[i + 8:i + 32]
+            return ReceiverReport(b[4] / 256, int.from_bytes(b[5:8], "big"),
+                                  int.from_bytes(b[8:12], "big"), int.from_bytes(b[12:16], "big"))
+        i += length
+    return None
+
+
+class _Rtcp(asyncio.DatagramProtocol):
+    """The sink's RTCP (and its NAT-opening packets): logs what it says about our stream."""
+
+    def __init__(self) -> None:
+        self.last_log = 0.0
+        self.reports = 0
+
+    def datagram_received(self, data: bytes, addr) -> None:
+        rr = parse_rtcp(data)
+        if rr is None:
+            return
+        self.reports += 1
+        now = time.monotonic()
+        if now - self.last_log >= RTCP_LOG_S:
+            self.last_log = now
+            log.info("the TV reports: %.0f%% lost lately, %d lost in all, jitter %.1f ms",
+                     rr.fraction_lost * 100, rr.lost, rr.jitter / 90)
 M3_PARAMS = ("wfd_video_formats", "wfd_audio_codecs", "wfd_client_rtp_ports", "wfd_content_protection",
              "wfd_display_edid", "wfd_connector_type", "intel_friendly_name")
 
@@ -71,6 +115,7 @@ class RtspSource:
         self._playing: asyncio.Future[None] | None = None
         self._ended: asyncio.Future[str] | None = None
         self._tasks: set[asyncio.Task] = set()
+        self._rtcp: list[asyncio.DatagramTransport] = []
         self._reader_task: asyncio.Task | None = None
         self._chosen: tuple[wfd.Mode, str, str, wfd.AudioFormat | None, str] | None = None
         self._session_id = str(secrets.randbelow(10**9))
@@ -103,6 +148,7 @@ class RtspSource:
     async def serve(self) -> str:
         """Keep the session alive until it ends. Returns why: teardown | keepalive | closed | error."""
         assert self._ended is not None
+        await self._open_rtcp()
         next_ping = time.monotonic() + KEEPALIVE_S
         while not self._ended.done():
             with contextlib.suppress(TimeoutError):
@@ -128,7 +174,19 @@ class RtspSource:
         self._end("teardown")
         self.close()
 
+    async def _open_rtcp(self) -> None:
+        """Our RTP "server" ports (RTSP port + 1 and + 2): the sink sends its receiver reports
+        there. A TV's went unanswered (firewall) in the first live test."""
+        loop = asyncio.get_running_loop()
+        for port in (self.port + 1, self.port + 2):
+            with contextlib.suppress(OSError):
+                t, _ = await loop.create_datagram_endpoint(_Rtcp, local_addr=(self.host, port))
+                self._rtcp.append(t)
+
     def close(self) -> None:
+        for t in self._rtcp:
+            t.close()
+        self._rtcp.clear()
         if self._reader_task and self._reader_task is not asyncio.current_task():
             self._reader_task.cancel()
         for t in list(self._tasks):
