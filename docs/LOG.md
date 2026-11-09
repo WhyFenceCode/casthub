@@ -423,3 +423,11 @@ heading for offices and lecture halls. Owner has a Miracast TV/projector; nothin
 - Fixed meanwhile: a formation failure left the screens on "Connecting" for ever and a dead
   group interface behind. casthub-p2p now ends the attempt, tells the screens why, and
   deletes the leftover interface; a group that fails during setup isn't served. Test added.
+- Live test 3, with wpa_supplicant's debug log: right after push-button pairing wpa_supplicant
+  logs "Removing interface p2p-…" (an outside request, no P2P removal reason). Cause, checked in
+  NetworkManager's source: on every GroupStarted, NM's supplicant layer makes an object for the
+  group interface; NM's Wi-Fi Direct device ignores groups it isn't activating (managed or not,
+  so our drop-in can't stop it) and drops the object, and dropping it sends wpa_supplicant
+  RemoveInterface. Any group NM didn't start dies within milliseconds. That is why no PC or TV
+  ever got into a group of ours. NM has no setting to turn its Wi-Fi Direct handling off
+  (only wpa_supplicant's p2p_disabled, which would turn ours off too). Design decision needed.
