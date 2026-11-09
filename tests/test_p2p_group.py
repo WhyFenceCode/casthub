@@ -227,6 +227,29 @@ class TestPairAsGroupOwner(unittest.TestCase):
         self.assertEqual(sum(c[1] == "Connect" for c in d.calls), 1)
         self.assertEqual([c[2]["why"] for c in d.calls if c[1] == "tv_failed"], ["declined on the other side"])
 
+    def test_a_tv_gets_us_as_its_gateway_a_pc_does_not(self):
+        pools = []
+
+        class FakeServer:
+            def __init__(self, ifname, pool, on_lease):
+                pools.append(pool)
+
+            async def start(self):
+                pass
+
+        orig, dhcp.Server = dhcp.Server, FakeServer
+        try:
+            for tv in (True, False):
+                d = self.daemon()
+                d.tv_mode = tv
+                d.group_if = "p2p-test-0"
+                asyncio.run(d.serve_group("p2p-test-0"))
+        finally:
+            dhcp.Server = orig
+        tv_pool, pc_pool = pools
+        self.assertEqual(tv_pool.router, tv_pool.server)
+        self.assertEqual(pc_pool.router, "")
+
     def test_formation_failure_ends_the_attempt(self):
         # Seen with a TV: the group came up, push-button succeeded, then the group went away.
         d = self.daemon()

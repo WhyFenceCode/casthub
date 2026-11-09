@@ -99,7 +99,7 @@ class Pool:
                  router: str = "", dns: tuple[str, ...] = ()) -> None:
         self.net = ipaddress.IPv4Network(network)
         self.server = server
-        self.router, self.dns = router, dns[:4]      # only when the hotspot shares our internet
+        self.router, self.dns = router, dns[:4]      # the hotspot sharing internet; a TV (its source)
         self.free = [str(self.net[i]) for i in range(first, last + 1) if str(self.net[i]) != server]
         self.leases: dict[str, str] = {}       # mac → address
 

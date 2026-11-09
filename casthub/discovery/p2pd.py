@@ -597,7 +597,11 @@ class P2PDaemon:
         if self.group_if != ifname:                  # the group ended while we set it up
             log.info("the group on %s ended before it was served", ifname)
             return
-        self.dhcp = dhcp.Server(ifname, dhcp.Pool(str(net), ours), lambda ip, _mac, host: self.announce(ip, host))
+        # A TV finds its source (us, the group owner) at the gateway DHCP gives it; without one
+        # it joined and never connected. Not for PCs: they would route the internet through us.
+        router = ours if self.tv_mode else ""
+        self.dhcp = dhcp.Server(ifname, dhcp.Pool(str(net), ours, router=router),
+                                lambda ip, _mac, host: self.announce(ip, host))
         try:
             await self.dhcp.start()
         except OSError as e:

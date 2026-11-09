@@ -446,3 +446,8 @@ heading for offices and lecture halls. Owner has a Miracast TV/projector; nothin
   before the group negotiation (it is what makes a TV expect a session), and our WFD info says
   "source" while joining instead of dual-role (dual-role again once the TV's session is up,
   `tv_ready` from the hub, so Win + K lists us during passthrough). Tests added.
+- Live test 5: the TV answered the pairing request (PROV-DISC-PBC-RESP), joined, took an
+  address, and again never connected. Our DHCP gave it no gateway; TVs find their source (the
+  group owner) at the gateway. The lease now includes us as the router, in TV mode only (a PC
+  would send its internet through us). Next try runs with a capture that starts before the
+  join (the first one began a minute late and would have missed the TV's first attempts).
