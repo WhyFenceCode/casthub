@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dbus_fast import Variant  # noqa: E402
 
 from casthub.discovery import dhcp, p2p  # noqa: E402
-from casthub.discovery.p2pd import GO_INTENT, P2PDaemon  # noqa: E402
+from casthub.discovery.p2pd import GO_INTENT, P2PDaemon, nm_patched  # noqa: E402
 
 PC_MAC = bytes.fromhex("00005e005301")
 NET, OURS = "192.0.2.0/24", "192.0.2.1"
@@ -93,6 +93,12 @@ class TestGroupNetwork(unittest.TestCase):
         taken = str(ipaddress.IPv4Network((int(p2p.PRIVATE_10.network_address) | 5 << 8, 24))[20])
         net = p2p.group_network([taken], rand=lambda a, b: next(picks))
         self.assertNotIn(ipaddress.IPv4Address(taken), net)
+
+
+class TestNetworkManagerBuild(unittest.TestCase):
+    def test_patched_release(self):
+        self.assertTrue(nm_patched("3.casthub1.fc45"))
+        self.assertFalse(nm_patched("3.fc45"))
 
 
 class TestPairAsGroupOwner(unittest.TestCase):

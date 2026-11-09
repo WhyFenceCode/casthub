@@ -1,0 +1,35 @@
+From: Cast Hub
+Subject: [PATCH] wifi-p2p: leave P2P groups alone when the P2P device is unmanaged
+
+NetworkManager creates an NMSupplicantInterface for every GroupStarted. When the
+P2P device is not activating it ignores the group and drops that object; dispose
+then calls RemoveInterface, so any group started by another program (here
+casthub-p2p, which owns Wi-Fi Direct groups) is torn down within milliseconds.
+When the administrator has made the P2P device unmanaged, retire the object
+without removing the interface. Managed devices keep the stock behaviour.
+---
+diff --git a/src/core/devices/wifi/nm-device-wifi-p2p.c b/src/core/devices/wifi/nm-device-wifi-p2p.c
+--- a/src/core/devices/wifi/nm-device-wifi-p2p.c
++++ b/src/core/devices/wifi/nm-device-wifi-p2p.c
+@@ -846,6 +846,21 @@
+         _LOGW(LOGD_DEVICE | LOGD_WIFI,
+               "P2P: WPA supplicant notified a group start but we are not trying to connect! "
+               "Ignoring the event.");
++        /* Cast Hub: when this P2P device is unmanaged (configured by the administrator), the
++         * group belongs to another program. Dropping @group_iface would dispose it, and
++         * dispose asks wpa_supplicant to RemoveInterface, which tears that group down within
++         * milliseconds. Retire our handle without removing the interface instead. Managed
++         * devices keep the stock behaviour. */
++        if (nm_device_get_state(NM_DEVICE(self)) == NM_DEVICE_STATE_UNMANAGED && group_iface
++            && group_iface != iface
++            && nm_supplicant_interface_get_state(group_iface)
++                   != NM_SUPPLICANT_INTERFACE_STATE_DOWN) {
++            _LOGI(LOGD_DEVICE | LOGD_WIFI,
++                  "P2P: device is unmanaged; leaving the group to whoever started it");
++            _nm_supplicant_interface_set_state_down(group_iface,
++                                                    FALSE,
++                                                    "P2P group not started by NetworkManager");
++        }
+         return;
+     }
+ 

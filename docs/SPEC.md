@@ -179,7 +179,10 @@ Two transports, one receiver:
   so the radio must support P2P. Push-button pairing (owner, Nov 7). Cast Hub owns the group
   (owner, Nov 8): casthub-p2p answers with go_intent 15, gives the group a /24 of its own in 10/8
   and serves DHCP to the PC; NetworkManager leaves `p2p-*` interfaces alone (a conf.d drop-in) and
-  keeps normal Wi-Fi. Why: NM 1.58 forms groups with go_intent 7, so Windows (14) owned them,
+  keeps normal Wi-Fi. Stock NM 1.58 still removes any group it didn't start (owner, Nov 8:
+  patch it if not a security risk), so Cast Hub runs NM with one patch
+  (`system/networkmanager/patches/`, `tools/build-nm.sh`, `tools/install-nm.sh`): groups are left
+  alone only while NM's Wi-Fi Direct device is unmanaged; no version lock, so Fedora updates win. Why: NM 1.58 forms groups with go_intent 7, so Windows (14) owned them,
   and every iwlwifi firmware crash seen was our side re-authenticating as the group's client. A PIN
   shown on the Display screen comes back with network-path PIN + DTLS.
 

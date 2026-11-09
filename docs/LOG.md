@@ -431,3 +431,10 @@ heading for offices and lecture halls. Owner has a Miracast TV/projector; nothin
   RemoveInterface. Any group NM didn't start dies within milliseconds. That is why no PC or TV
   ever got into a group of ours. NM has no setting to turn its Wi-Fi Direct handling off
   (only wpa_supplicant's p2p_disabled, which would turn ours off too). Design decision needed.
+- Owner chose to patch NetworkManager ("if it is not a security risk"). NM's removal is a side
+  effect of dropping its object, not a safeguard; only root may tell wpa_supplicant to start a
+  group (its D-Bus policy). The patch is scoped: NM leaves foreign groups alone only while its
+  Wi-Fi Direct device is unmanaged (our drop-in in /etc); managed devices keep stock behaviour.
+  Built in a throwaway Fedora container (`tools/build-nm.sh`, release `.casthub1`), installed
+  by `tools/install-nm.sh` (snapshot first). No version lock, so a Fedora update wins; then
+  casthub-p2p logs that NM is unpatched. Live test pending.

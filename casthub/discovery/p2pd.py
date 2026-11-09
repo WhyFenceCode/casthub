@@ -74,6 +74,11 @@ SUPPLICANT_CONF = Path("/run/NetworkManager/casthub-p2p-supplicant.conf")
 REJOIN_S = 30                   # wait this long for NetworkManager to reconnect Wi-Fi
 
 
+def nm_patched(release: str) -> bool:
+    """NetworkManager's RPM release from tools/build-nm.sh ends in .casthub<N>.<dist>."""
+    return ".casthub" in release
+
+
 def wifi_interface(preferred: str, net: Path = Path("/sys/class/net")) -> str:
     """Our Wi-Fi (station) interface: the configured one, else the first wireless interface that
     is neither a Wi-Fi Direct group (p2p-*) nor our own hotspot (casthub-ap sorts first)."""
@@ -154,6 +159,7 @@ class P2PDaemon:
     async def start(self) -> None:
         self.bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
         await self.hotspot.cleanup()
+        await self.check_networkmanager()
         await self.find_device()
         self.bus.add_message_handler(self.on_signal)
         await self.call("/org/freedesktop/DBus", "org.freedesktop.DBus", "AddMatch", "s",
@@ -161,6 +167,15 @@ class P2PDaemon:
         # Silent until a hub (Display mode) connects and asks: Cast Hub is only a cast
         # target while Display mode is on screen.
         await self.unadvertise()
+
+    async def check_networkmanager(self) -> None:
+        """Stock NetworkManager removes Wi-Fi Direct groups it didn't start (our groups die in
+        milliseconds); Cast Hub's build (tools/build-nm.sh) leaves them alone. Say so in the log
+        after a Fedora update has replaced it."""
+        rc, out = await self.run("rpm", "-q", "--qf", "%{RELEASE}", "NetworkManager")
+        if rc == 0 and not nm_patched(out):
+            log.warning("NetworkManager is Fedora's build, without Cast Hub's patch: Wi-Fi Direct "
+                        "casts and passthrough won't connect. Run tools/build-nm.sh and tools/install-nm.sh")
 
     async def advertise(self, new_address: bool = False) -> None:
         # A Wi-Fi Direct cast often ends at the hub (RTSP teardown) before its group does:

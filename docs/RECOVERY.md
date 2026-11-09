@@ -85,6 +85,23 @@ sudo systemctl daemon-reload && sudo firewall-cmd --reload
 sudo systemctl restart wpa_supplicant NetworkManager   # clears our P2P settings
 ```
 
+## Patched NetworkManager (`tools/install-nm.sh`)
+
+Stock NetworkManager removes every Wi-Fi Direct group it didn't start, so Cast Hub runs a
+build with one patch (`system/networkmanager/patches/`): groups are left alone while NM's
+Wi-Fi Direct device is unmanaged. Its release ends in `.casthub1`
+(`rpm -q NetworkManager`). There is no version lock: a Fedora update replaces it, and then only
+Wi-Fi Direct casts stop working until `tools/build-nm.sh` and `tools/install-nm.sh` are run again.
+
+Networking broken after installing it? Go back to Fedora's build (from a text console if needed):
+
+```sh
+sudo dnf distro-sync 'NetworkManager*'
+sudo systemctl restart NetworkManager
+```
+
+Or roll back to the `pre-nm-patch` snapshot (below).
+
 ## Roll the whole system back to a snapshot
 
 Snapshots are made by `tools/snapshot.sh` before every system change, at the top
