@@ -2,8 +2,8 @@
 # casthub-display: Display mode as a panel inside Workstation or Console.
 #
 # Runs a nested Sway (one window) with the Display UI and the receiver hub, so the
-# machine takes casts without leaving the current session. Ctrl+Alt+Esc, or "Close" in the
-# panel's bar, closes the panel and ends any cast (casthub-panel-close). The real Display mode
+# machine takes casts without leaving the current session. Ctrl+Alt+Esc, or "Menu" › "Quit panel" in
+# the panel's bar, closes the panel and ends any cast (casthub-panel-close). The real Display mode
 # from the login screen is unchanged.
 #
 #   casthub-display [--capture FILE]
