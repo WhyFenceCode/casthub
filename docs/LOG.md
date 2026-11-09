@@ -399,3 +399,18 @@ heading for offices and lecture halls. Owner has a Miracast TV/projector; nothin
   (1080p30 + AAC negotiated), the TV process with a test cast: 94 frames + audio in 3 s, then off
   with a clean teardown. Previews (local) light and dark. Tests for each part.
 - Live test pending (owner): search finds the TV, it joins, a Windows and an iPhone cast show on it.
+
+## M10 live test 1: the TV refused our channel; the panel gets passthrough setup, 2026-11-08
+
+- Owner: the TV join showed "Connecting" but the TV never saw it. Log: the TV was found, then
+  group negotiation failed at once, twice, with status 7, "no common channel". We pinned the
+  group to our Wi-Fi's channel (5745 MHz, to keep PCs from timing out); this TV doesn't take it.
+- Fix: on "no common channel" casthub-p2p asks once more without a channel, so wpa_supplicant
+  picks one both sides list (the radio then shares its time between two channels). Any other
+  failure, or a second one, tells the screens why ("Couldn't reach <TV> · <reason>"); failures
+  are logged with their meaning. Tests for both.
+- Owner: in the Display panel, "Close" closed at once, so passthrough couldn't be set up there.
+  Now "Close" opens a short leave page: Close, Passthrough setup, Cancel (Esc also cancels).
+  Ctrl+Alt+Esc still closes at once. Previews (local) light and dark; tests load the page and
+  check both menus.
+- Live test pending: the panel's menu, and the TV joining on a common channel.

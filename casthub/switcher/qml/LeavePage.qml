@@ -17,6 +17,7 @@ Rectangle {
     property string error: ""
     // From the hub: {state: off|searching|connecting|on|failed, tv, why, tvs: [names], locked, allowed}
     property var passthrough: ({ state: "off", tv: "", why: "", tvs: [], locked: false, allowed: true })
+    property bool panel: false              // the Display panel (casthub-display): Close + passthrough only
     property bool searching: false          // a search for displays is running (~10 s)
     property string view: "main"            // main | passthrough
 
@@ -30,11 +31,16 @@ Rectangle {
     readonly property var pt: passthrough || ({})
     readonly property bool ptActive: pt.state !== undefined && pt.state !== "off"
     readonly property var mainActions: {
-        var r = [{ id: "leave", k: "Log out", v: "Back to the login screen" }]
+        var r = [panel ? { id: "leave", k: "Close", v: "Close the Display panel" }
+                       : { id: "leave", k: "Log out", v: "Back to the login screen" }]
         if (pt.allowed !== false)
             r.push({ id: "passthrough", k: "Passthrough setup",
                      v: pt.state === "on" ? "Sending to " + pt.tv
                         : pt.locked ? "Set by the administrator" : "Send casts on to a Miracast display" })
+        if (panel) {                        // the desktop is still there: no restart or shut down here
+            r.push({ id: "back", k: "Cancel", v: "Keep the panel open" })
+            return r
+        }
         r.push({ id: "reboot", k: "Restart", v: "Restart this machine" })
         r.push({ id: "poweroff", k: "Shut down", v: "Turn this machine off" })
         return r
@@ -66,6 +72,7 @@ Rectangle {
             if (!pt.locked && !searching && (pt.tvs || []).length === 0) chosen("tv_find")
             return
         }
+        if (a.id === "back" && view === "main") { cancelled(); return }
         if (a.id === "back") { view = "main"; selected = 1; return }
         if (a.id === "tv_find" && searching) return
         chosen(a.id)
@@ -111,7 +118,8 @@ Rectangle {
     DisplayBar {
         u: root.fu; tok: t
         margin: root.margin; modeX: root.colX(4)
-        modeText: "Leave display mode"
+        modeText: root.panel ? "Close display panel" : "Leave display mode"
+        logoutText: root.panel ? "Close" : "Log out"
         dateText: Qt.formatDate(root.clockNow, "dddd d MMMM")
         showLogout: true                                   // same bar as the idle screen
         onLogoutRequested: root.chosen("leave")
@@ -121,7 +129,7 @@ Rectangle {
         x: root.margin - 7 * root.ux
         y: 350 * root.uy - baselineOffset
         u: root.u; tok: t; textStyle: t.dclock
-        text: root.view === "passthrough" ? "To a TV" : "Leave?"
+        text: root.view === "passthrough" ? "To a TV" : root.panel ? "Close?" : "Leave?"
         fontSizeMode: Text.HorizontalFit
         width: root.colX(8) - x
     }
@@ -154,7 +162,7 @@ Rectangle {
         Label {
             x: 17 * root.ux; anchors.verticalCenter: parent.top
             u: root.u; tok: t; textStyle: t.dlabel
-            text: root.view === "passthrough" ? "TV only while on · no hotspot" : "Display mode paused"
+            text: root.view === "passthrough" ? "TV only while on · no hotspot" : root.panel ? "Display panel" : "Display mode paused"
         }
         Label {
             y: 24 * root.uy - height / 2

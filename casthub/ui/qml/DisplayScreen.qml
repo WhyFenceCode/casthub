@@ -31,7 +31,7 @@ Rectangle {
 
     // ---- leave page (Ctrl+Alt+Esc), drawn on top of this screen ----------------
     property bool leaveOpen: false
-    property bool panel: false              // inside Workstation/Console (casthub-display): "Close", no leave page
+    property bool panel: false              // inside Workstation/Console (casthub-display): "Close" opens a short leave page
     signal leaveChosen(string action)
     signal leaveCancelled()
 
@@ -91,7 +91,7 @@ Rectangle {
             dateText: root.days[root.clockNow.getDay()] + " " + root.clockNow.getDate() + " " + root.months[root.clockNow.getMonth()]
             showLogout: true
             logoutText: root.panel ? "Close" : "Log out"
-            onLogoutRequested: root.panel ? root.leaveChosen("leave") : root.leaveOpen = true
+            onLogoutRequested: root.leaveOpen = true
         }
 
         // Big line: the time, or the sender's name while connecting.
@@ -269,6 +269,7 @@ Rectangle {
             item.receiverName = Qt.binding(function () { return root.receiverName })
             item.theme = Qt.binding(function () { return root.theme })
             item.fixedNow = root.fixedNow
+            item.panel = root.panel
             item.passthrough = Qt.binding(function () { return root.passthrough })
             item.searching = Qt.binding(function () { return root.searching })
             item.forceActiveFocus()

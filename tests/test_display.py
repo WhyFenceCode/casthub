@@ -160,3 +160,40 @@ class TestJoinCode(unittest.TestCase):
         self.assertEqual(app.hotspot_password(code), "pa:ss\\word")
         self.assertEqual(app.hotspot_ssid(""), "")
         self.assertEqual(app.hotspot_ssid("http://example.invalid"), "")
+
+
+class TestLeavePageMenus(unittest.TestCase):
+    """The panel (casthub-display) gets a short leave page: Close, Passthrough setup, Cancel."""
+
+    def actions(self, **props) -> tuple[list[str], object]:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQuick import QQuickView
+
+        QGuiApplication.instance() or QGuiApplication([])
+        v = QQuickView()
+        v.setInitialProperties(props)
+        v.setSource(QUrl.fromLocalFile(str(ROOT / "casthub" / "switcher" / "qml" / "LeavePage.qml")))
+        self.assertEqual(v.errors(), [])
+        root = v.rootObject()
+        self.addCleanup(v.deleteLater)
+        return [a["id"] for a in root.property("actions").toVariant()], root
+
+    def test_display_mode(self):
+        ids, _ = self.actions()
+        self.assertEqual(ids, ["leave", "passthrough", "reboot", "poweroff"])
+
+    def test_panel(self):
+        ids, root = self.actions(panel=True)
+        self.assertEqual(ids, ["leave", "passthrough", "back"])
+        cancelled = []
+        root.cancelled.connect(lambda: cancelled.append(True))
+        root.choose(2)                                   # Cancel closes the page
+        self.assertEqual(cancelled, [True])
+        root.choose(1)                                   # Passthrough setup opens the TV view
+        self.assertEqual(root.property("view"), "passthrough")
+
+    def test_panel_without_passthrough(self):
+        ids, _ = self.actions(panel=True, passthrough={"state": "off", "tv": "", "why": "", "tvs": [],
+                                                       "locked": False, "allowed": False})
+        self.assertEqual(ids, ["leave", "back"])

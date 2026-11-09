@@ -59,6 +59,11 @@ PAIR_TIMEOUT_S = 60          # give up on a Wi-Fi Direct pairing after this
 PAIR_RETRY_AFTER_S = 3       # a repeated request from the PC this long after ours: answer it again
 PAIR_RESTARTS = 4
 GO_INTENT = 15               # always the group owner (see the module notes)
+NO_COMMON_CHANNELS = 7
+GO_NEG_STATUS = {1: "the other side is busy", 2: "incompatible settings", 3: "limit reached",
+                 4: "invalid parameters", 5: "the other side can't take it", 6: "protocol error",
+                 7: "no common channel", 8: "unknown group", 9: "both sides insist on owning the group",
+                 10: "incompatible pairing method", 11: "declined on the other side"}  # Wi-Fi P2P status codes
 TV_FIND_S = 8                # one search for Miracast TVs
 TV_FIND_TRIES = 4
 INVITE_FALLBACK_S = 10        # after refusing an invitation, wait this long for the PC to pair afresh
@@ -111,6 +116,8 @@ class P2PDaemon:
         self.mice_addresses: list[str] = []      # our Wi-Fi IPv4 address(es) in the MS-MICE attributes
         self.hotspot = hotspot.Hotspot(self)
         self.hotspot_held = False          # a Wi-Fi Direct cast paused the hotspot
+        self.pair_peer = ""                # the peer of the current Connect, and the channel we asked for
+        self.pair_freq = 0
         self.tv_mode = False               # passthrough: our group is with a TV, not a PC
         self.tv_name = ""
         self.tv_task: asyncio.Task | None = None
@@ -390,8 +397,22 @@ class P2PDaemon:
     async def on_pd_enter_pin(self, peer: str, *_):
         log.warning("the PC shows a PIN; Cast Hub only offers push-button")
 
-    async def on_go_failure(self, *_):
-        log.warning("Wi-Fi Direct group negotiation failed")
+    async def on_go_failure(self, props: dict | None = None, *_):
+        status = props.get("status", Variant("i", -1)).value if isinstance(props, dict) else -1
+        why = GO_NEG_STATUS.get(status, f"status {status}")
+        log.warning("Wi-Fi Direct group negotiation failed: %s", why)
+        if not self.connecting or not self.pair_peer:
+            return
+        # The other side doesn't take our Wi-Fi's channel (seen: a TV that refuses 5745 MHz).
+        # Ask once more without a channel: wpa_supplicant picks one both sides list. A second
+        # channel costs the radio some time-sharing, but a link beats none.
+        if status == NO_COMMON_CHANNELS and self.pair_freq:
+            log.info("it doesn't take our Wi-Fi's channel; asking again on any common channel")
+            await self.connect(self.pair_peer, pin_channel=False)
+            return
+        if self.tv_mode:
+            self.connecting = False
+            self.broadcast({"event": "tv_failed", "why": why})
 
     async def forget_groups(self) -> None:
         """Drop saved (persistent) groups. Windows marks the group it owns as persistent and
@@ -485,17 +506,18 @@ class P2PDaemon:
         except (RuntimeError, ValueError, TypeError):
             return 0
 
-    async def connect(self, peer: str) -> None:
+    async def connect(self, peer: str, pin_channel: bool = True) -> None:
         args = {"peer": Variant("o", peer), "wps_method": Variant("s", "pbc"),
                 "go_intent": Variant("i", GO_INTENT), "persistent": Variant("b", False),
                 "join": Variant("b", False)}
         # The group shares our Wi-Fi's channel. Left to choose, wpa_supplicant may take another
         # one (5805 next to a station on 5745): the radio then splits its time between the two
         # and the PC never found the group within the 15 s formation window.
-        freq = await self.station_frequency()
+        freq = await self.station_frequency() if pin_channel else 0
         if freq:
             args["frequency"] = Variant("i", freq)
-        log.info("group owner on %s", f"{freq} MHz (our Wi-Fi's channel)" if freq else "any channel (no Wi-Fi)")
+        self.pair_peer, self.pair_freq = peer, freq
+        log.info("group owner on %s", f"{freq} MHz (our Wi-Fi's channel)" if freq else "any common channel")
         try:
             await self.call(self.dev, P2PDEV, "Connect", "a{sv}", [args])
         except RuntimeError as e:

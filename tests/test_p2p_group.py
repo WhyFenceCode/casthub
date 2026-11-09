@@ -130,6 +130,7 @@ class TestPairAsGroupOwner(unittest.TestCase):
             async def resume(self):
                 d.calls.append(("hotspot", "resume", None))
         d.hotspot, d.hotspot_held = FakeHotspot(), False
+        d.pair_peer, d.pair_freq, d.tv_mode = "", 0, False
         d.broadcast = lambda ev: d.calls.append(("hub", ev["event"], ev))
         return d
 
@@ -162,6 +163,35 @@ class TestPairAsGroupOwner(unittest.TestCase):
         asyncio.run(d.connect("/peer/1"))
         _, _, body = next(c for c in d.calls if c[1] == "Connect")
         self.assertNotIn("frequency", body[0])
+
+    def test_no_common_channel_asks_again_on_any_channel(self):
+        # Seen with a TV: our Wi-Fi's channel (5745 MHz) refused with status 7.
+        d = self.daemon()
+        d.tv_mode, d.connecting = True, True
+
+        async def go():
+            await d.connect("/peer/tv")
+            await d.on_go_failure({"status": Variant("i", 7)})
+            await d.on_go_failure({"status": Variant("i", 7)})       # no channel at all: give up
+        asyncio.run(go())
+        connects = [c[2][0] for c in d.calls if c[1] == "Connect"]
+        self.assertEqual(len(connects), 2)
+        self.assertEqual(connects[0]["frequency"].value, 5745)
+        self.assertNotIn("frequency", connects[1])
+        failed = [c[2] for c in d.calls if c[1] == "tv_failed"]
+        self.assertEqual(failed, [{"event": "tv_failed", "why": "no common channel"}])
+        self.assertFalse(d.connecting)
+
+    def test_other_failures_do_not_retry(self):
+        d = self.daemon()
+        d.tv_mode, d.connecting = True, True
+
+        async def go():
+            await d.connect("/peer/tv")
+            await d.on_go_failure({"status": Variant("i", 11)})
+        asyncio.run(go())
+        self.assertEqual(sum(c[1] == "Connect" for c in d.calls), 1)
+        self.assertEqual([c[2]["why"] for c in d.calls if c[1] == "tv_failed"], ["declined on the other side"])
 
     def test_group_owner_serves_dhcp_and_announces(self):
         d = self.daemon()
