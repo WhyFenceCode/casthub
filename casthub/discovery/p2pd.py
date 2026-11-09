@@ -373,6 +373,7 @@ class P2PDaemon:
                    "ProvisionDiscoveryRequestEnterPin": self.on_pd_enter_pin,
                    "GONegotiationFailure": self.on_go_failure,
                    "GroupStarted": self.on_group_started,
+                   "GroupFormationFailure": self.on_formation_failure,
                    "GroupFinished": self.on_group_finished,
                    "InvitationReceived": self.on_invitation}.get(msg.member)
         if msg.member not in ("DeviceFound", "DeviceFoundProperties", "DeviceLost", "FindStopped"):
@@ -532,8 +533,11 @@ class P2PDaemon:
 
     async def on_group_started(self, props: dict):
         role = props.get("role", Variant("s", "")).value
-        self.group_path = props["interface_object"].value
-        self.group_if = await self.get(self.group_path, IFACE, "Ifname")
+        path = self.group_path = props["interface_object"].value
+        ifname = await self.get(path, IFACE, "Ifname")
+        if self.group_path != path:                  # it failed while we asked for its name
+            return
+        self.group_if = ifname
         self.connecting = False
         log.info("group started, role %s", role)
         if role == "GO":
@@ -568,6 +572,9 @@ class P2PDaemon:
         await self.run("ip", "addr", "add", f"{ours}/{net.prefixlen}", "dev", ifname)
         await self.run("ip", "link", "set", ifname, "up")
         await self.firewall_zone(ifname)
+        if self.group_if != ifname:                  # the group ended while we set it up
+            log.info("the group on %s ended before it was served", ifname)
+            return
         self.dhcp = dhcp.Server(ifname, dhcp.Pool(str(net), ours), lambda ip, _mac, host: self.announce(ip, host))
         try:
             await self.dhcp.start()
@@ -612,8 +619,25 @@ class P2PDaemon:
             self.broadcast({"event": "tv_gone"})
         await self.end_session()
 
+    async def on_formation_failure(self, *_):
+        """The group came up but the other side never finished joining (seen with a TV: the
+        group went away right after push-button). Without this the screen said "Connecting"
+        for ever and a dead group interface stayed behind."""
+        leftover = self.group_if
+        log.warning("Wi-Fi Direct group formation failed%s", f" ({leftover})" if leftover else "")
+        self.connecting = False
+        if self.tv_mode:
+            self.broadcast({"event": "tv_failed", "why": "the Wi-Fi Direct link didn't form"})
+        await self.end_session()
+        if leftover:                                 # wpa_supplicant may have lost track of it
+            rc, _ = await self.run("ip", "link", "show", leftover)
+            if rc == 0:
+                await self.run("iw", "dev", leftover, "del")
+                log.info("removed the leftover group interface %s", leftover)
+
     async def close_group(self) -> None:
         """Stop serving our group and end it (wpa_supplicant removes its interface)."""
+        self.group_if = ""
         if self.dhcp:
             self.dhcp.stop()
             self.dhcp = None

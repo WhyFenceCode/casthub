@@ -193,6 +193,40 @@ class TestPairAsGroupOwner(unittest.TestCase):
         self.assertEqual(sum(c[1] == "Connect" for c in d.calls), 1)
         self.assertEqual([c[2]["why"] for c in d.calls if c[1] == "tv_failed"], ["declined on the other side"])
 
+    def test_formation_failure_ends_the_attempt(self):
+        # Seen with a TV: the group came up, push-button succeeded, then the group went away.
+        d = self.daemon()
+        d.tv_mode, d.connecting = True, True
+
+        async def noop(*_, **__):
+            return None
+        d.forget_groups = d.advertise = noop
+
+        class FakeServer:
+            def __init__(self, *_):
+                pass
+
+            async def start(self):
+                pass
+
+            def stop(self):
+                pass
+
+        async def go():
+            orig, dhcp.Server = dhcp.Server, FakeServer
+            try:
+                await d.on_group_started({"role": Variant("s", "GO"), "interface_object": Variant("o", "/group/0")})
+                await d.on_formation_failure()
+            finally:
+                dhcp.Server = orig
+            return d.dhcp
+        dhcp_left = asyncio.run(go())
+        self.assertIsNone(dhcp_left)                                        # DHCP stopped
+        self.assertEqual(d.group_if, "")
+        self.assertIn(("iw", "dev", "p2p-test-0", "del"), d.cmds)           # no dead interface left
+        why = [c[2]["why"] for c in d.calls if c[1] == "tv_failed"]
+        self.assertEqual(why, ["the Wi-Fi Direct link didn't form"])        # the screen stops "Connecting"
+
     def test_group_owner_serves_dhcp_and_announces(self):
         d = self.daemon()
         started = []

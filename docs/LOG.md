@@ -414,3 +414,12 @@ heading for offices and lecture halls. Owner has a Miracast TV/projector; nothin
   Ctrl+Alt+Esc still closes at once. Previews (local) light and dark; tests load the page and
   check both menus.
 - Live test pending: the panel's menu, and the TV joining on a common channel.
+- Live test 2: the retry worked. The TV took a 2.4 GHz channel, we became group owner and
+  push-button pairing succeeded, but the group went away in the same second, before the TV
+  joined it with the group's key (wpa_supplicant: "group formation failure"; a local
+  disconnect, no kernel error). Earlier Windows tests also never got a client into our group,
+  so this is our group-owner path, not the TV. Cause not known yet: next try runs with
+  wpa_supplicant's debug log on, which names whatever removes the group.
+- Fixed meanwhile: a formation failure left the screens on "Connecting" for ever and a dead
+  group interface behind. casthub-p2p now ends the attempt, tells the screens why, and
+  deletes the leftover interface; a group that fails during setup isn't served. Test added.
