@@ -482,3 +482,7 @@ heading for offices and lecture halls. Owner has a Miracast TV/projector; nothin
   reports it has received nothing from us".
 - Owner: return to the Display screen only once the TV is connected. Picking a TV now keeps the
   setup page open while it connects; it closes when passthrough is on, and stays on a failure.
+- Live test 9: **the TV shows the picture.** With RTP from server_port 7237 the TV took the
+  stream: its waiting screen between casts and an iPhone cast passed through to it.
+- Owner: Close, Cancel and Exit side by side confused. Panel names now: "Menu" in the bar opens
+  the page; "Quit panel", "Passthrough setup", "Resume"; in the TV view "Stop passthrough".

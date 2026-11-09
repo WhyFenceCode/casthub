@@ -169,7 +169,7 @@ class TestJoinCode(unittest.TestCase):
 
 
 class TestLeavePageMenus(unittest.TestCase):
-    """The panel (casthub-display) gets a short leave page: Close, Passthrough setup, Cancel."""
+    """The panel (casthub-display) gets a short leave page: Quit panel, Passthrough setup, Resume."""
 
     def actions(self, **props) -> tuple[list[str], object]:
         from PySide6.QtCore import QUrl
@@ -192,9 +192,11 @@ class TestLeavePageMenus(unittest.TestCase):
     def test_panel(self):
         ids, root = self.actions(panel=True)
         self.assertEqual(ids, ["leave", "passthrough", "back"])
+        labels = [a["k"] for a in root.property("actions").toVariant()]
+        self.assertEqual(labels, ["Quit panel", "Passthrough setup", "Resume"])   # no Close/Cancel side by side
         cancelled = []
         root.cancelled.connect(lambda: cancelled.append(True))
-        root.choose(2)                                   # Cancel closes the page
+        root.choose(2)                                   # Resume closes the page
         self.assertEqual(cancelled, [True])
         root.choose(1)                                   # Passthrough setup opens the TV view
         self.assertEqual(root.property("view"), "passthrough")

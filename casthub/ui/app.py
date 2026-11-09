@@ -41,7 +41,7 @@ QR_FILE = Path("/run/casthub/hotspot-qr.txt")      # written by the hotspot serv
 LEAVE = "/usr/libexec/casthub/casthub-leave"
 PANEL_CLOSE = "/usr/libexec/casthub/casthub-panel-close"
 # CASTHUB_PANEL=1: Display mode as a panel inside Workstation or Console (casthub-display).
-# There the bar's "Close" opens a short leave page (Close, Passthrough setup, Cancel) and
+# There the bar's "Menu" opens a short leave page (Quit panel, Passthrough setup, Resume) and
 # Ctrl+Alt+Esc closes the panel at once.
 PANEL = os.environ.get("CASTHUB_PANEL") == "1"
 ACTIONS = {

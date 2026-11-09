@@ -31,14 +31,14 @@ Rectangle {
     readonly property var pt: passthrough || ({})
     readonly property bool ptActive: pt.state !== undefined && pt.state !== "off"
     readonly property var mainActions: {
-        var r = [panel ? { id: "leave", k: "Close", v: "Close the Display panel" }
+        var r = [panel ? { id: "leave", k: "Quit panel", v: "End any cast and close the panel" }
                        : { id: "leave", k: "Log out", v: "Back to the login screen" }]
         if (pt.allowed !== false)
             r.push({ id: "passthrough", k: "Passthrough setup",
                      v: pt.state === "on" ? "Sending to " + pt.tv
                         : pt.locked ? "Set by the administrator" : "Send casts on to a Miracast display" })
         if (panel) {                        // the desktop is still there: no restart or shut down here
-            r.push({ id: "back", k: "Cancel", v: "Keep the panel open" })
+            r.push({ id: "back", k: "Resume", v: "Back to the Display screen" })
             return r
         }
         r.push({ id: "reboot", k: "Restart", v: "Restart this machine" })
@@ -60,7 +60,7 @@ Rectangle {
                         : current && pt.state !== "failed" ? "Connecting" : "Send casts here" })
         }
         r.push({ id: "tv_find", k: "Search again", v: searching ? "Searching" : "Look for displays nearby" })
-        if (ptActive) r.push({ id: "tv_off", k: "Turn off", v: "Back to Cast Hub's own screens" })
+        if (ptActive) r.push({ id: "tv_off", k: "Stop passthrough", v: "Back to Cast Hub's own screens" })
         if (r.length < 4) r.push({ id: "back", k: "Back", v: "To the other choices" })
         return r
     }
@@ -118,8 +118,10 @@ Rectangle {
     DisplayBar {
         u: root.fu; tok: t
         margin: root.margin; modeX: root.colX(4)
-        modeText: root.panel ? "Close display panel" : "Leave display mode"
-        logoutText: root.panel ? "Close" : "Log out"
+        // Panel names kept apart (owner, Nov 9: Close / Cancel / Exit side by side confused):
+        // "Menu" opens this page, "Quit panel" closes the panel, "Resume" goes back.
+        modeText: root.panel ? "Display panel menu" : "Leave display mode"
+        logoutText: root.panel ? "Quit panel" : "Log out"
         dateText: Qt.formatDate(root.clockNow, "dddd d MMMM")
         showLogout: true                                   // same bar as the idle screen
         onLogoutRequested: root.chosen("leave")
@@ -129,7 +131,7 @@ Rectangle {
         x: root.margin - 7 * root.ux
         y: 350 * root.uy - baselineOffset
         u: root.u; tok: t; textStyle: t.dclock
-        text: root.view === "passthrough" ? "To a TV" : root.panel ? "Close?" : "Leave?"
+        text: root.view === "passthrough" ? "To a TV" : root.panel ? "Menu" : "Leave?"
         fontSizeMode: Text.HorizontalFit
         width: root.colX(8) - x
     }

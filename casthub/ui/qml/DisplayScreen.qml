@@ -44,7 +44,7 @@ Rectangle {
     // TV gets the clock, the name and the status with its dots; the ways to connect, the QR
     // and the Log out / Close button stay on Cast Hub's own screens (owner, Nov 9).
     property bool tvCard: false
-    property bool panel: false              // inside Workstation/Console (casthub-display): "Close" opens a short leave page
+    property bool panel: false              // inside Workstation/Console (casthub-display): "Menu" opens a short leave page
     signal leaveChosen(string action)
     signal leaveCancelled()
 
@@ -103,7 +103,7 @@ Rectangle {
             margin: root.margin; modeX: root.colX(4)
             dateText: root.days[root.clockNow.getDay()] + " " + root.clockNow.getDate() + " " + root.months[root.clockNow.getMonth()]
             showLogout: !root.tvCard
-            logoutText: root.panel ? "Close" : "Log out"
+            logoutText: root.panel ? "Menu" : "Log out"
             onLogoutRequested: root.leaveOpen = true
         }
 
