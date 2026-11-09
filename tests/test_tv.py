@@ -5,7 +5,7 @@ import os
 import unittest
 
 from casthub.media import pipeline as media
-from casthub.media.tv import TvSender, TvTarget, describe_sender
+from casthub.media.tv import TvSender, TvTarget, describe_card, describe_sender
 
 
 class TestDescriptions(unittest.TestCase):
@@ -30,6 +30,67 @@ class TestDescriptions(unittest.TestCase):
             self.assertIn("add-borders=true", d)
             self.assertNotIn("glimagesink", d)                           # TV only: no windows
             self.assertNotIn("pipewiresink", d)                          # and nothing on our speakers
+            # Live test: a synced hand-over behind videorate dropped every frame (TV stayed black).
+            self.assertIn("name=vsink sync=false async=false", d)
+            self.assertNotIn("videorate", d)
+
+    def test_card_loops_the_rendered_frames(self):
+        from casthub.media import tvcard
+        d = describe_card(TvTarget("192.0.2.10", 1028, 1280, 720, 30), "/run/x")
+        self.assertIn(f"location=/run/x/card-%d.png index=0 start-index=0 stop-index={tvcard.FRAMES - 1} loop=true", d)
+        self.assertIn("width=1280,height=720", d)
+        self.assertIn("intervideosink channel=casthub-tv name=card", d)
+
+    def test_card_state(self):
+        from casthub.media.tvcard import card_state
+        s = card_state({"receiverName": "Brand-1"}, {"screenState": "idle"})
+        self.assertEqual(s, {"receiverName": "Brand-1", "screenState": "idle"})
+        s = card_state({"screenState": "streaming", "deviceName": "<phone>", "junk": 1}, s)
+        self.assertEqual(s["screenState"], "connecting")                 # no picture yet: the dots
+        self.assertEqual(s["receiverName"], "Brand-1")                   # kept between lines
+        self.assertNotIn("junk", s)
+
+
+class TestCardRenderer(unittest.TestCase):
+    """The renderer itself, offscreen: five frames, replaced on each state line."""
+
+    def test_renders_frames(self):
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+
+        from casthub.media import tvcard
+        try:
+            import PySide6  # noqa: F401
+        except ImportError:
+            self.skipTest("no PySide6")
+        d = Path(tempfile.mkdtemp())
+        root = Path(__file__).resolve().parents[1]
+        p = subprocess.Popen([sys.executable, "-I", "-c", tvcard_boot(root), "320", "180", str(d)],
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                             env={**os.environ, "QT_QPA_PLATFORM": "offscreen"})
+        try:
+            self.assertEqual(p.stdout.readline().strip(), b"ready")
+            frames = [tvcard.frame_path(d, i) for i in range(tvcard.FRAMES)]
+            self.assertTrue(all(f.stat().st_size > 0 for f in frames))
+            first, last = frames[0].stat().st_mtime_ns, frames[-1].stat().st_mtime_ns
+            p.stdin.write(b'{"receiverName": "Brand-1", "screenState": "connecting", "deviceName": "<phone>"}\n')
+            p.stdin.flush()
+            import time
+            for _ in range(100):
+                if frames[-1].stat().st_mtime_ns != last:
+                    break
+                time.sleep(0.05)
+            self.assertNotEqual(frames[0].stat().st_mtime_ns, first)    # drawn again
+            self.assertEqual(sorted(x.name for x in d.iterdir()), sorted(f.name for f in frames))  # no temp files left
+        finally:
+            p.stdin.close()
+            p.wait(timeout=10)
+
+
+def tvcard_boot(root) -> str:
+    return f"import sys; sys.path.insert(0, {str(root)!r}); from casthub.media.tvcard import main; raise SystemExit(main())"
 
 
 LIVE = not os.environ.get("CASTHUB_NO_GST")

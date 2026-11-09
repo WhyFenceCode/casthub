@@ -550,7 +550,8 @@ class TestAirPlay(unittest.TestCase):
             sent.append(msg)
             return True
         r = SimpleNamespace(state="idle")
-        hub = SimpleNamespace(receivers=[r], p2p_busy=False, p2p_send=p2p_send)
+        hub = SimpleNamespace(receivers=[r], p2p_busy=False, p2p_send=p2p_send,
+                              passthrough=SimpleNamespace(show_state=lambda r: None))
 
         async def go():
             for state in ("connecting", "streaming", "idle", "idle"):

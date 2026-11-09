@@ -262,6 +262,8 @@ class Hub:
     async def on_receiver_state(self, r: Receiver) -> None:
         """While a cast is on, Wi-Fi Direct says "not available" and stops answering discovery,
         so Win + K stops listing us (it lists from Wi-Fi Direct; M4)."""
+        if self.receivers and r is self.receivers[0]:
+            self.passthrough.show_state(r)            # the TV's own screen (passthrough)
         busy = r.state in ("connecting", "streaming")
         if busy == self.p2p_busy or r is not (self.receivers[0] if self.receivers else r):
             return

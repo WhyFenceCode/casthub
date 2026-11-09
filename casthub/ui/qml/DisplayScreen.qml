@@ -31,6 +31,10 @@ Rectangle {
 
     // ---- leave page (Ctrl+Alt+Esc), drawn on top of this screen ----------------
     property bool leaveOpen: false
+    // Passthrough (M10): this screen is drawn for the TV (media/tvcard.py) between casts. The
+    // TV gets the clock, the name and the status with its dots; the ways to connect, the QR
+    // and the Log out / Close button stay on Cast Hub's own screens (owner, Nov 9).
+    property bool tvCard: false
     property bool panel: false              // inside Workstation/Console (casthub-display): "Close" opens a short leave page
     signal leaveChosen(string action)
     signal leaveCancelled()
@@ -45,7 +49,7 @@ Rectangle {
     // text colour, so a wait never looks like a freeze ---------------------------------
     readonly property bool loading: receiverName === "" || screenState === "connecting"
     property int dotStep: 0                 // 0-3: that period is purple; 4: none
-    Timer { interval: 220; running: root.loading; repeat: true; onTriggered: root.dotStep = (root.dotStep + 1) % 5 }
+    Timer { interval: 220; running: root.loading && !root.tvCard; repeat: true; onTriggered: root.dotStep = (root.dotStep + 1) % 5 }
     function dotted(base, spaced) {
         var out = base
         for (var i = 0; i < 4; i++)         // spaced: thin spaces before each dot, the display style's tight tracking joins them
@@ -89,7 +93,7 @@ Rectangle {
             u: root.fu; tok: t
             margin: root.margin; modeX: root.colX(4)
             dateText: root.days[root.clockNow.getDay()] + " " + root.clockNow.getDate() + " " + root.months[root.clockNow.getMonth()]
-            showLogout: true
+            showLogout: !root.tvCard
             logoutText: root.panel ? "Close" : "Log out"
             onLogoutRequested: root.leaveOpen = true
         }
@@ -143,7 +147,7 @@ Rectangle {
                 border.width: status.active ? 0 : Math.max(1, 1.3 * root.u)
                 border.color: t.accent
                 SequentialAnimation on opacity {
-                    running: status.active; loops: Animation.Infinite
+                    running: status.active && !root.tvCard; loops: Animation.Infinite
                     onRunningChanged: if (!running) dot.opacity = 1
                     NumberAnimation { to: 0.3; duration: 600; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 1; duration: 600; easing.type: Easing.InOutSine }
@@ -170,7 +174,7 @@ Rectangle {
         // Loader in the instructions' place while the hub decides how senders reach it (SPEC D28):
         // the rows never show steps that won't work on this network.
         Label {
-            visible: root.receiverName === "" && root.screenState === "idle" && !root.pinCode
+            visible: root.receiverName === "" && root.screenState === "idle" && !root.pinCode && !root.tvCard
             anchors.right: parent.right; anchors.rightMargin: root.margin
             y: 494 * root.uy
             u: root.u; tok: t; textStyle: t.dlabel; color: t.muted
@@ -180,7 +184,7 @@ Rectangle {
 
         Grid {
             id: ways
-            visible: root.receiverName !== ""
+            visible: root.receiverName !== "" && !root.tvCard
             anchors.right: qr.visible ? qr.left : parent.right
             anchors.rightMargin: qr.visible ? 2 * root.gutter : root.margin
             y: 494 * root.uy
@@ -219,7 +223,7 @@ Rectangle {
         // Hotspot QR. Always dark modules on a light ground so phones read it in either theme.
         Rectangle {
             id: qr
-            visible: root.hotspotOn && root.receiverName !== ""
+            visible: root.hotspotOn && root.receiverName !== "" && !root.tvCard
             readonly property real side: 110 * root.u
             readonly property real pad: root.dark ? 6 * root.u : 0
             width: side + 2 * pad; height: width

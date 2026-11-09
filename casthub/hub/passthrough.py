@@ -55,6 +55,14 @@ class Passthrough:
         return {"cmd": "passthrough", "state": self.state, "tv": self.want, "why": self.why,
                 "tvs": self.tvs, "locked": self.locked, "allowed": self.allowed}
 
+    def show_state(self, r) -> None:
+        """The TV's own screen between casts follows the main receiver (media/tvcard.py)."""
+        if self.proc is None:
+            return
+        cfg = self.hub.cfg
+        self.proc.card(receiverName=r.name, screenState=r.state, deviceName=r.device,
+                       theme=cfg.theme, location=cfg.location, coordinates=cfg.coordinates())
+
     async def _set(self, state: str, why: str = "") -> None:
         if (state, why) != (self.state, self.why):
             log.info("passthrough: %s%s", state, f" ({why})" if why else "")
@@ -139,6 +147,8 @@ class Passthrough:
         self.proc = self.factory(target, lambda text: lost.done() or lost.set_result(text))
         await self.proc.start()
         self.source.on_idr = self.proc.keyframe
+        if self.hub.receivers:
+            self.show_state(self.hub.receivers[0])
         shown = session.name or name
         for r in self.hub.receivers:
             await r.set_tv(self.proc, shown)

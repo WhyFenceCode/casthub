@@ -45,12 +45,16 @@ class FakeSource:
 class FakeProc:
     def __init__(self, target, on_error):
         self.target, self.on_error, self.stopped = target, on_error, False
+        self.cards = []
 
     async def start(self):
         pass
 
     def keyframe(self):
         pass
+
+    def card(self, **state):
+        self.cards.append(state)
 
     def stop(self):
         self.stopped = True
@@ -59,6 +63,7 @@ class FakeProc:
 class FakeReceiver:
     def __init__(self):
         self.tv, self.calls = None, []
+        self.name, self.state, self.device = "Brand-1", "idle", ""
 
     async def set_tv(self, tv, name=""):
         self.tv = tv
@@ -109,6 +114,8 @@ class TestController(unittest.TestCase):
             return h, pt, rec, proc, on
         h, pt, rec, proc, on = asyncio.run(go())
         self.assertEqual(on, ("on", True, 1920, "192.0.2.30"))
+        self.assertEqual(proc.cards[0]["receiverName"], "Brand-1")       # the TV's own screen
+        self.assertEqual(proc.cards[0]["screenState"], "idle")
         self.assertEqual(h.sent, [{"cmd": "tv_on", "name": "<tv>"}, {"cmd": "tv_ready"}, {"cmd": "tv_off"}])
         self.assertEqual(rec.calls, ["<tv>", None])                  # casts back on our screens
         self.assertTrue(proc.stopped)

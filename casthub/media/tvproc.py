@@ -10,6 +10,7 @@ Commands on stdin, JSON lines:
     {"cmd": "play", "id": 3, "spec": {...MediaSpec}}    start a cast's input (ends the previous one)
     {"cmd": "end", "id": 3}                             end it, if it is still the current one
     {"cmd": "keyframe"}                                 the TV asked for one
+    {"cmd": "card", "screenState": ..., ...}            the TV's own screen (media/tvcard.py)
 Events on stdout:
     {"event": "started"} or {"event": "failed", "text": ...}   (the sender, first)
     {"event": "input_started" | "input_failed" | "first_frame" | "input_error", "id": 3, ...}
@@ -29,6 +30,7 @@ import itertools
 import json
 import logging
 import os
+import shutil
 import signal
 import sys
 import time
@@ -40,6 +42,8 @@ from casthub.media.tv import TvSender, TvTarget
 
 log = logging.getLogger("casthub.media")
 BOOT = player.BOOT.replace("casthub.media.player", "casthub.media.tvproc")
+CARD_BOOT = player.BOOT.replace("casthub.media.player", "casthub.media.tvcard")
+CARD_READY_S = 15
 START_TIMEOUT_S = 10
 
 
@@ -75,6 +79,10 @@ class TvProcess:
 
     def keyframe(self) -> None:
         self._send({"cmd": "keyframe"})
+
+    def card(self, **state: str) -> None:
+        """What the TV shows between casts: the receiver's name, idle or connecting, the sender."""
+        self._send({"cmd": "card", **state})
 
     def _send(self, msg: dict) -> None:
         if self.proc and self.proc.stdin and self.proc.returncode is None:
@@ -180,6 +188,7 @@ async def run(target: TvTarget) -> int:
         player.emit(event="failed", text=str(e))
         return 1
     player.emit(event="started")
+    card = await start_card(target, sender)
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, done.set)
     stdin = asyncio.StreamReader()
@@ -190,6 +199,8 @@ async def run(target: TvTarget) -> int:
         cmd = msg.get("cmd")
         if cmd == "keyframe":
             sender.keyframe()
+        elif cmd == "card" and card is not None and card.stdin:
+            card.stdin.write(json.dumps({k: v for k, v in msg.items() if k != "cmd"}).encode() + b"\n")
         elif cmd == "end" and msg.get("id") == current["id"]:
             sender.end_input()
             current["id"] = 0
@@ -219,10 +230,44 @@ async def run(target: TvTarget) -> int:
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(done.wait(), player.REPORT_S)
     reader.cancel()
+    if card is not None and card.returncode is None:
+        with contextlib.suppress(ProcessLookupError):
+            card.terminate()
     if failed:
         player.emit(event="error", text=failed[0])
+    card_dir = sender.card_dir
     sender.stop()
+    if card_dir:
+        shutil.rmtree(card_dir, ignore_errors=True)
     return 1 if failed else 0
+
+
+async def start_card(target: TvTarget, sender: TvSender) -> asyncio.subprocess.Process | None:
+    """The renderer for the TV's own screen; black between casts if it doesn't come up."""
+    import tempfile
+    directory = tempfile.mkdtemp(prefix="casthub-tv-card-", dir=os.environ.get("XDG_RUNTIME_DIR") or None)
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-I", "-c", CARD_BOOT, str(target.width), str(target.height), directory,
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            env={**os.environ, "QT_QPA_PLATFORM": "offscreen"})
+        assert proc.stdout
+        line = await asyncio.wait_for(proc.stdout.readline(), CARD_READY_S)
+    except (OSError, TimeoutError) as e:
+        log.warning("tv card renderer: %s; black between casts", e or "no answer")
+        shutil.rmtree(directory, ignore_errors=True)
+        return None
+    if line.strip() != b"ready":
+        log.warning("tv card renderer did not start; black between casts")
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        shutil.rmtree(directory, ignore_errors=True)
+        return None
+    sender.card_dir = directory
+    if sender.input is None:
+        sender.show_card()
+    log.info("tv card: the TV shows Cast Hub's screen between casts")
+    return proc
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -6,8 +6,9 @@ One sender pipeline runs for as long as passthrough is on:
                                    ├─ mpegtsmux ─ rtpmp2tpay ─ udpsink → TV
     interaudiosrc ─ AAC ──────────┘
 
-It runs at the TV's frame rate whatever comes in, and sends black and silence between casts,
-so the TV keeps its Miracast session. Each cast's input (our Miracast or AirPlay receive path,
+It runs at the TV's frame rate whatever comes in, so the TV keeps its Miracast session. Between
+casts the input is the TV's own screen (media/tvcard.py: waiting, connecting with its dots),
+looped from images; a cast replaces it from its first frame until it ends. Each cast's input (our Miracast or AirPlay receive path,
 media/pipeline.py with `tv` set) decodes, scales to the TV's mode with black borders and hands
 frames and audio over through the inter elements: so it must run in this same process. TV only:
 nothing plays on our screens or speakers meanwhile.
@@ -47,6 +48,16 @@ class TvTarget:
         return f"{self.width}x{self.height}@{self.fps}"
 
 
+def describe_card(t: TvTarget, directory: str) -> str:
+    """The TV's own screen as an input: tvcard.py's images, looped at its frame rate."""
+    from casthub.media import tvcard
+    last = tvcard.FRAMES - 1
+    return (f"multifilesrc location={directory}/card-%d.png index=0 start-index=0 stop-index={last} loop=true"
+            f" caps=image/png,framerate={tvcard.FPS}/1 ! pngdec ! videoconvert ! videoscale"
+            f" ! video/x-raw,format=NV12,width={t.width},height={t.height},pixel-aspect-ratio=1/1"
+            f" ! intervideosink channel={media.TV_CHANNEL} name=card")
+
+
 def describe_sender(t: TvTarget) -> str:
     """gst-launch description of the sender pipeline."""
     baseline = t.profile == "constrained-baseline"
@@ -75,6 +86,8 @@ class TvSender:
         self.target, self.on_error = target, on_error
         self.pipe = None
         self.input: media.Pipeline | None = None
+        self.card = None                    # the TV's own screen between casts (a pipeline)
+        self.card_dir = ""                  # tvcard.py's images; "" = black between casts
         self._poll: asyncio.Task | None = None
         self.sent = 0                       # RTP packets out (diagnostics, tests)
 
@@ -106,19 +119,43 @@ class TvSender:
         enc = self.pipe.get_by_name("enc")
         enc.get_static_pad("src").send_event(GstVideo.video_event_new_upstream_force_key_unit(g.CLOCK_TIME_NONE, True, 0))
 
+    def show_card(self) -> None:
+        """The TV's own screen (between casts, and while a cast connects)."""
+        if self.card is not None or not self.card_dir:
+            return
+        g = media.gst()
+        try:
+            self.card = g.parse_launch(describe_card(self.target, self.card_dir))
+        except Exception as e:          # noqa: BLE001 (GLib errors): black instead of the card
+            log.warning("tv card: %s", e)
+            return
+        self.card.set_state(g.State.PLAYING)
+
+    def hide_card(self) -> None:
+        if self.card is not None:
+            self.card.set_state(media.gst().State.NULL)
+            self.card = None
+
     def play(self, spec: media.MediaSpec, on_first_frame: Callable[[], None], on_error: Callable[[str], None]) -> None:
-        """Start a cast's input (ends the previous one). spec.tv is set to the TV's mode here."""
+        """Start a cast's input (ends the previous one). spec.tv is set to the TV's mode here.
+        The card ("connecting") stays until the cast's first frame."""
         self.end_input()
         import dataclasses
         spec = dataclasses.replace(spec, tv=self.target.tv, mirrors=())
-        self.input = media.Pipeline(spec, on_first_frame, on_error)
+
+        def first_frame() -> None:
+            self.hide_card()
+            self.keyframe()                 # the new picture starts clean on the TV
+            on_first_frame()
+        self.input = media.Pipeline(spec, first_frame, on_error)
         self.input.start()
-        self.keyframe()                     # the new picture starts clean on the TV
+        self.show_card()
 
     def end_input(self) -> None:
         if self.input:
             self.input.stop()
             self.input = None
+        self.show_card()
 
     async def _watch(self) -> None:
         g = media.gst()
@@ -137,7 +174,9 @@ class TvSender:
             return
 
     def stop(self) -> None:
+        self.card_dir = ""
         self.end_input()
+        self.hide_card()
         if self._poll and self._poll is not asyncio.current_task():
             self._poll.cancel()
         if self.pipe is not None:

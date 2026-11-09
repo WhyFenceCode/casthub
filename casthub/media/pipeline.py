@@ -170,10 +170,15 @@ def parse_tv(value: str) -> tuple[int, int, int]:
 
 
 def tv_video_tail(tv: str, name: str = "vsink") -> str:
-    """Scale to the TV's mode (black borders keep the shape), fix the frame rate, hand over."""
-    w, h, fps = parse_tv(tv)
+    """Scale to the TV's mode (black borders keep the shape) and hand over at once.
+
+    No clock sync and no videorate here: the TV sender runs at the TV's frame rate and repeats
+    the last frame by itself. With both, the first live test showed nothing: videorate filled
+    the gap since the waiting AirPlay player started with ~1500 copies, the synced sink dropped
+    them all as late ("A lot of buffers are being dropped") and then stalled."""
+    w, h, _fps = parse_tv(tv)
     return (f"vapostproc add-borders=true ! video/x-raw,format=NV12,width={w},height={h},pixel-aspect-ratio=1/1"
-            f" ! videorate ! video/x-raw,framerate={fps}/1 ! intervideosink channel={TV_CHANNEL} name={name}")
+            f" ! intervideosink channel={TV_CHANNEL} name={name} sync=false async=false")
 
 
 def audio_tail(spec: MediaSpec) -> str:

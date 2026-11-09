@@ -451,3 +451,17 @@ heading for offices and lecture halls. Owner has a Miracast TV/projector; nothin
   group owner) at the gateway. The lease now includes us as the router, in TV mode only (a PC
   would send its internet through us). Next try runs with a capture that starts before the
   join (the first one began a minute late and would have missed the TV's first attempts).
+- Live test 6: **connected**. With us as its gateway the TV opened RTSP right after joining
+  (LIVE555 sink, 1080p30 CBP + AAC negotiated) and RTP flowed (~60 000 packets). The TV stayed
+  black: between casts we sent black, and an iPhone cast never reached it. The cast's hand-over
+  (videorate, then a clock-synced intervideosink) got ~1500 frames at once from videorate
+  filling the gap since the waiting AirPlay player started, dropped them all as late and then
+  stalled (0 frames). The hand-over is now unsynced with no videorate (the sender repeats
+  frames at the TV's rate by itself).
+- Owner: the TV should show a waiting screen and "connecting" with the dots, but no connection
+  instructions (those only on Cast Hub's own screens). `media/tvcard.py` renders the Display
+  screen offscreen in a new tvCard mode (clock, name, status and dots; no ways to connect, QR or
+  Log out) at the TV's size, as five PNG frames (the dots' steps), redrawn on each state change
+  and minute. The sender loops them between casts and while a cast connects, until its first
+  frame. Checked: renders light and dark at 1080p (previews local), the card reaches the TV
+  channel at 30 fps. Tests for each part.
