@@ -42,17 +42,21 @@ class ReceiverReport:
     lost: int                # packets lost in all
     highest_seq: int
     jitter: int              # RTP timestamp units (90 kHz)
+    received: bool = True    # False: a report with no blocks, the sink has had nothing from us
 
 
 def parse_rtcp(data: bytes) -> ReceiverReport | None:
-    """The first report block of an RTCP receiver report (RFC 3550 6.4.2), or None."""
+    """The first report block of an RTCP receiver report (RFC 3550 6.4.2), a report with
+    received=False if it has no blocks, or None if there is no receiver report."""
     i = 0
     while i + 4 <= len(data):
         if data[i] >> 6 != 2:
             return None
         count, pt = data[i] & 0x1F, data[i + 1]
         length = (int.from_bytes(data[i + 2:i + 4], "big") + 1) * 4
-        if pt == 201 and count and i + 8 + 24 <= len(data):        # RR: header, SSRC, then blocks
+        if pt == 201 and not count:
+            return ReceiverReport(0.0, 0, 0, 0, received=False)
+        if pt == 201 and i + 8 + 24 <= len(data):                  # RR: header, SSRC, then blocks
             b = data[i + 8:i + 32]
             return ReceiverReport(b[4] / 256, int.from_bytes(b[5:8], "big"),
                                   int.from_bytes(b[8:12], "big"), int.from_bytes(b[12:16], "big"))
@@ -75,6 +79,9 @@ class _Rtcp(asyncio.DatagramProtocol):
         now = time.monotonic()
         if now - self.last_log >= RTCP_LOG_S:
             self.last_log = now
+            if not rr.received:
+                log.warning("the TV reports it has received nothing from us")
+                return
             log.info("the TV reports: %.0f%% lost lately, %d lost in all, jitter %.1f ms",
                      rr.fraction_lost * 100, rr.lost, rr.jitter / 90)
 M3_PARAMS = ("wfd_video_formats", "wfd_audio_codecs", "wfd_client_rtp_ports", "wfd_content_protection",
@@ -175,10 +182,10 @@ class RtspSource:
         self.close()
 
     async def _open_rtcp(self) -> None:
-        """Our RTP "server" ports (RTSP port + 1 and + 2): the sink sends its receiver reports
-        there. A TV's went unanswered (firewall) in the first live test."""
+        """Our RTCP "server" port (RTSP port + 2): the sink sends its receiver reports there. RTP
+        leaves from port + 1, bound by the TV sender (media/tv.py)."""
         loop = asyncio.get_running_loop()
-        for port in (self.port + 1, self.port + 2):
+        for port in (self.port + 2,):
             with contextlib.suppress(OSError):
                 t, _ = await loop.create_datagram_endpoint(_Rtcp, local_addr=(self.host, port))
                 self._rtcp.append(t)

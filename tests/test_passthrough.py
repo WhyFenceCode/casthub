@@ -114,6 +114,7 @@ class TestController(unittest.TestCase):
             return h, pt, rec, proc, on
         h, pt, rec, proc, on = asyncio.run(go())
         self.assertEqual(on, ("on", True, 1920, "192.0.2.30"))
+        self.assertEqual(proc.target.src_port, 7237)                    # RTP from SETUP's server_port
         self.assertEqual(proc.cards[0]["receiverName"], "Brand-1")       # the TV's own screen
         self.assertEqual(proc.cards[0]["screenState"], "idle")
         self.assertEqual(h.sent, [{"cmd": "tv_on", "name": "<tv>"}, {"cmd": "tv_ready"}, {"cmd": "tv_off"}])

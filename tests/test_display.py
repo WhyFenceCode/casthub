@@ -141,8 +141,14 @@ class TestApp(unittest.TestCase):
         QTest.keyClick(view, Qt.Key.Key_Down)
         QTest.keyClick(view, Qt.Key.Key_Return)
         self.assertIn(("ran", "reboot"), chosen)
-        QTest.keyClick(view, Qt.Key.Key_Escape)
+        # A TV picked: the page stays while it connects, and closes once the TV is on.
+        ui.leave_when_on = True
+        tv = {"cmd": "passthrough", "tv": "<tv>", "why": "", "tvs": [], "locked": False, "allowed": True}
+        ui.handle({**tv, "state": "connecting"})
+        self.assertTrue(root.property("leaveOpen"))
+        ui.handle({**tv, "state": "on"})
         self.assertFalse(root.property("leaveOpen"))
+        self.assertFalse(ui.leave_when_on)
         for v in ui.views.values():
             v.close()
 

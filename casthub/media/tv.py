@@ -43,6 +43,7 @@ class TvTarget:
     profile: str = "constrained-high"      # or constrained-baseline (from the handshake)
     audio: str = "AAC"                     # AAC | LPCM | "" (none)
     bitrate_kbps: int = 5000              # the TV link is 2.4 GHz, sharing the radio with our Wi-Fi
+    src_port: int = 0             # our RTP port as SETUP told the TV (server_port); 0 = any
 
     @property
     def tv(self) -> str:
@@ -72,7 +73,10 @@ def describe_sender(t: TvTarget) -> str:
              f" ! h264parse config-interval=-1 ! queue ! mux.sink_{VIDEO_PID}")
     progs = f"program_map,sink_{VIDEO_PID}=(int)1,sink_{AUDIO_PID}=(int)1,PMT_1=(uint){PMT_PID}"
     out = (f" mpegtsmux name=mux alignment=7 prog-map=\"{progs}\" ! rtpmp2tpay name=pay pt=33"
-           f" ! udpsink name=out host={t.host} port={t.port} sync=false async=false")
+           f" ! udpsink name=out host={t.host} port={t.port}"
+           # From the server_port we gave in SETUP: a TV took a stream from another port, sent
+           # receiver reports that counted none of it, and stayed black (live test 8).
+           f"{f' bind-port={t.src_port}' if t.src_port else ''} sync=false async=false")
     audio = ""
     if t.audio == "AAC":
         audio = (f" interaudiosrc channel={media.TV_CHANNEL} name=asrc ! {media.TV_AUDIO} ! audioconvert"

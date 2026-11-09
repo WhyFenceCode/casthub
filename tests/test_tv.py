@@ -20,6 +20,9 @@ class TestDescriptions(unittest.TestCase):
         self.assertIn("PMT_1=(uint)256", d)                              # WFD program map PID 0x0100
         self.assertIn("aud=true", d)                                     # access unit delimiters
         self.assertIn("rtpmp2tpay name=pay pt=33", d)                    # MP2T's static payload type
+        self.assertNotIn("bind-port", d)
+        self.assertIn("port=1028 bind-port=7237 ", describe_sender(TvTarget("192.0.2.10", 1028, 1920, 1080, 30,
+                                                                            src_port=7237)))   # SETUP's server_port
         base = describe_sender(TvTarget("192.0.2.10", 1028, 640, 480, 60, profile="constrained-baseline", audio=""))
         self.assertIn("cabac=false", base)
         self.assertNotIn("interaudiosrc", base)

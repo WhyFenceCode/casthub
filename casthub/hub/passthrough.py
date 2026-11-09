@@ -137,12 +137,13 @@ class Passthrough:
     async def _session(self, name: str) -> None:
         await self._set("searching")
         self.source = self.source_factory("0.0.0.0", rtsp_source.DEFAULT_PORT)
-        await self.source.listen()
+        port = await self.source.listen()
         if not await self.hub.p2p_send({"cmd": "tv_on", "name": name}):
             raise RuntimeError("casthub-p2p is not running")
         session = await self.source.accept()
         target = TvTarget(session.sink_host, session.rtp_port, session.video.width, session.video.height,
-                          session.video.fps, session.profile, session.audio.codec if session.audio else "")
+                          session.video.fps, session.profile, session.audio.codec if session.audio else "",
+                          src_port=port + 1)
         lost = asyncio.get_running_loop().create_future()
         self.proc = self.factory(target, lambda text: lost.done() or lost.set_result(text))
         await self.proc.start()

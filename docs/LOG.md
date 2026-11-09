@@ -474,3 +474,11 @@ heading for offices and lecture halls. Owner has a Miracast TV/projector; nothin
   a TV (or turning it off) now closes the leave page on every screen. The Display screen's status
   line says "Connecting to <TV>…", "Couldn't reach <TV>", then "Casts go to <TV>", beside the
   ways to connect a phone (not on the TV's own card). Tests and a preview (tv-joining).
+- Live test 8: session up, cast frames at the sender, TV black. A 15 s capture: ~500 RTP
+  packets/s to the TV, and every few seconds a 44-byte RTCP packet back that the source didn't
+  log, i.e. a receiver report with no blocks: the TV counted none of our packets. SETUP told it
+  our RTP comes from server_port 7237, but the sender used a random port. The sender now binds
+  7237 (the source's RTCP listener keeps 7238 only), and an empty report is logged as "the TV
+  reports it has received nothing from us".
+- Owner: return to the Display screen only once the TV is connected. Picking a TV now keeps the
+  setup page open while it connects; it closes when passthrough is on, and stays on a failure.

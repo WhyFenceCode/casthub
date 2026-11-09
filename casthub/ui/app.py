@@ -95,6 +95,7 @@ class DisplayUI(QObject):
         self.routes: dict[str, str] = {}            # output → how senders reach the hub
         self.tvs: dict[str, str] = {}               # output → the TV its casts go to (passthrough)
         self.passthrough: dict = {}
+        self.leave_when_on = False                  # a TV was picked: back to the Display screen once on
         self.qr = ""
         for s in app.screens():
             self.add_screen(s)
@@ -207,9 +208,10 @@ class DisplayUI(QObject):
         cmd = {"tv_find": {"cmd": "tv_find"}, "tv_off": {"cmd": "tv_off"}}.get(action) or {"cmd": "tv_on", "name": name}
         if cmd["cmd"] == "tv_find":
             self.set_all("searching", True)
-        if cmd["cmd"] in ("tv_on", "tv_off"):
-            # Picked (or turned off): straight back to the Display screen, where the ways to
-            # connect a phone are; its status line follows the TV (owner, Nov 9).
+        # A TV picked: back to the Display screen (the ways to connect a phone) once the TV's
+        # session is up, not before; a failure stays on the setup page (owner, Nov 9).
+        self.leave_when_on = cmd["cmd"] == "tv_on"
+        if cmd["cmd"] == "tv_off":
             self.set_all("leaveOpen", False)
         log.info("passthrough: %s", cmd["cmd"])
 
@@ -275,6 +277,10 @@ class DisplayUI(QObject):
             status["tvs"] = [str(t) for t in status.get("tvs") or []]
             self.passthrough = status
             self.set_all("passthrough", status)
+            if self.leave_when_on and status["state"] in ("on", "failed", "off"):
+                self.leave_when_on = False
+                if status["state"] == "on":
+                    self.set_all("leaveOpen", False)
         elif cmd == "tv":                               # this screen's casts go to that TV ("" = ours)
             v = self.views.get(msg["output"])
             if v is None:

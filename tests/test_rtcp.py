@@ -24,7 +24,8 @@ class TestRtcp(unittest.TestCase):
     def test_not_a_report(self):
         self.assertIsNone(parse_rtcp(b""))
         self.assertIsNone(parse_rtcp(b"\x00\x01\x02\x03"))                  # not RTP version 2
-        self.assertIsNone(parse_rtcp(struct.pack("!BBHI", 0x80, 201, 1, 0x22)))  # an RR with no blocks
+        self.assertFalse(parse_rtcp(struct.pack("!BBHI", 0x80, 201, 1, 0x22)).received)  # no blocks: nothing
+        self.assertTrue(parse_rtcp(rr(0, 0, 5, 1)).received)
 
 
 if __name__ == "__main__":
