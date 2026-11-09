@@ -60,6 +60,7 @@ PAIR_RETRY_AFTER_S = 3       # a repeated request from the PC this long after ou
 PAIR_RESTARTS = 4
 GO_INTENT = 15               # always the group owner (see the module notes)
 NO_COMMON_CHANNELS = 7
+PD_WAIT_S = 5                # a TV's answer to our pairing request
 GO_NEG_STATUS = {1: "the other side is busy", 2: "incompatible settings", 3: "limit reached",
                  4: "invalid parameters", 5: "the other side can't take it", 6: "protocol error",
                  7: "no common channel", 8: "unknown group", 9: "both sides insist on owning the group",
@@ -125,6 +126,8 @@ class P2PDaemon:
         self.pair_freq = 0
         self.tv_mode = False               # passthrough: our group is with a TV, not a PC
         self.tv_name = ""
+        self.pd_done: asyncio.Event | None = None
+        self.tv_ready = False              # the TV's session is up: dual-role again (Win + K lists us)
         self.tv_task: asyncio.Task | None = None
 
     # ---- D-Bus helpers -------------------------------------------------------------
@@ -388,6 +391,10 @@ class P2PDaemon:
                    "ProvisionDiscoveryRequestEnterPin": self.on_pd_enter_pin,
                    "GONegotiationFailure": self.on_go_failure,
                    "GroupStarted": self.on_group_started,
+                   "ProvisionDiscoveryPBCResponse": self.on_pd_response,
+                   "ProvisionDiscoveryResponseDisplayPin": self.on_pd_response,
+                   "ProvisionDiscoveryResponseEnterPin": self.on_pd_response,
+                   "ProvisionDiscoveryFailure": self.on_pd_response,
                    "GroupFormationFailure": self.on_formation_failure,
                    "GroupFinished": self.on_group_finished,
                    "InvitationReceived": self.on_invitation}.get(msg.member)
@@ -680,7 +687,8 @@ class P2PDaemon:
 
     # ---- passthrough (M10): the TV ------------------------------------------------------------
     def wfd_ies(self) -> bytes:
-        return p2p.wfd_subelements(available=not self.busy, dual_role=self.tv_mode)
+        return p2p.wfd_subelements(available=not self.busy, dual_role=self.tv_mode,
+                                   source=self.tv_mode and not self.tv_ready)
 
     async def find_tvs(self, seconds: float | None = None) -> list[dict]:
         """Search for Miracast displays (WFD sinks) nearby: [{"name": ..., "peer": object path}]."""
@@ -713,6 +721,7 @@ class P2PDaemon:
             self.tv_mode = True
             await self.hotspot.pause("passthrough")
         self.tv_name = name
+        self.tv_ready = False                         # only a source until the TV's session is up
         await self.close_group()                      # a PC's Wi-Fi Direct cast gives way
         with contextlib.suppress(RuntimeError):
             await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", self.wfd_ies())
@@ -723,11 +732,38 @@ class P2PDaemon:
             if match:
                 log.info("joining the TV as group owner (push-button)")
                 self.connecting, self.pair_started, self.pair_restarts = True, time.monotonic(), 0
+                await self.provision(match[0]["peer"])
                 await self.connect(match[0]["peer"])
                 self.pair_watch = asyncio.create_task(self._guard(self.pair_deadline(self.pair_started)))
                 return
         log.warning("the TV was not found")
         self.broadcast({"event": "tv_failed", "why": "not found"})
+
+    async def provision(self, peer: str) -> None:
+        """Ask the TV for push-button pairing first, as Android and Windows do: that is what makes
+        a TV expect a session (and show its prompt) before the group negotiation."""
+        self.pd_done = asyncio.Event()
+        try:
+            await self.call(self.dev, P2PDEV, "ProvisionDiscoveryRequest", "os", [peer, "pbc"])
+        except RuntimeError as e:
+            log.warning("pairing request to the TV: %s", e)
+            return
+        try:
+            await asyncio.wait_for(self.pd_done.wait(), PD_WAIT_S)
+            log.info("the TV answered the pairing request")
+        except TimeoutError:
+            log.info("no answer to the pairing request within %d s; going on", PD_WAIT_S)
+
+    async def on_pd_response(self, *_):
+        if self.pd_done:
+            self.pd_done.set()
+
+    async def set_tv_ready(self) -> None:
+        """The hub reports the TV's session is up: dual-role again, so Win + K lists us."""
+        if self.tv_mode and not self.tv_ready:
+            self.tv_ready = True
+            with contextlib.suppress(RuntimeError):
+                await self.set("/fi/w1/wpa_supplicant1", WPAS, "WFDIEs", "ay", self.wfd_ies())
 
     async def tv_off(self) -> None:
         if self.tv_task:
@@ -736,7 +772,7 @@ class P2PDaemon:
         if not self.tv_mode:
             return
         log.info("passthrough off: the radio goes back to casts and the hotspot")
-        self.tv_mode, self.tv_name, self.connecting = False, "", False
+        self.tv_mode, self.tv_name, self.connecting, self.tv_ready = False, "", False, False
         await self.close_group()
         self.announced.clear()
         if self.advertising:
@@ -790,6 +826,8 @@ class P2PDaemon:
                         self.tv_task = asyncio.create_task(self._guard(self.tv_on(str(msg["name"]))))
                     elif msg.get("cmd") == "tv_off":
                         await self.tv_off()
+                    elif msg.get("cmd") == "tv_ready":
+                        await self.set_tv_ready()
                 except (ValueError, KeyError, RuntimeError) as e:
                     log.warning("hub message: %s", e)
         finally:

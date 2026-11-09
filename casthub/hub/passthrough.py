@@ -143,6 +143,7 @@ class Passthrough:
         for r in self.hub.receivers:
             await r.set_tv(self.proc, shown)
         await self._set("on")
+        await self.hub.p2p_send({"cmd": "tv_ready"})     # dual-role again: Win + K lists us
         serving = asyncio.ensure_future(self.source.serve())
         done, _ = await asyncio.wait({serving, lost}, return_when=asyncio.FIRST_COMPLETED)
         why = next(iter(done)).result()

@@ -95,6 +95,14 @@ class TestGroupNetwork(unittest.TestCase):
         self.assertNotIn(ipaddress.IPv4Address(taken), net)
 
 
+class TestJoiningATv(unittest.TestCase):
+    def test_source_only_until_the_session_is_up(self):
+        info = lambda ies: struct.unpack(">H", ies[3:5])[0] & 0x0003       # noqa: E731 device type
+        self.assertEqual(info(p2p.wfd_subelements(source=True, dual_role=True)), p2p.WFD_SOURCE)
+        self.assertEqual(info(p2p.wfd_subelements(dual_role=True)), p2p.WFD_DUAL_ROLE)
+        self.assertEqual(info(p2p.wfd_subelements()), p2p.WFD_PRIMARY_SINK)
+
+
 class TestNetworkManagerBuild(unittest.TestCase):
     def test_patched_release(self):
         self.assertTrue(nm_patched("3.casthub1.fc45"))
@@ -169,6 +177,26 @@ class TestPairAsGroupOwner(unittest.TestCase):
         asyncio.run(d.connect("/peer/1"))
         _, _, body = next(c for c in d.calls if c[1] == "Connect")
         self.assertNotIn("frequency", body[0])
+
+    def test_pairing_request_before_joining_a_tv(self):
+        from casthub.discovery import p2pd
+        d = self.daemon()
+        d.pd_done = None
+
+        async def go(answer: bool):
+            d.calls.clear()
+            task = asyncio.ensure_future(d.provision("/peer/tv"))
+            await asyncio.sleep(0.01)
+            if answer:
+                await d.on_pd_response("/peer/tv")
+            await task
+        orig, p2pd.PD_WAIT_S = p2pd.PD_WAIT_S, 0.1
+        try:
+            for answer in (True, False):                                   # answered, or not: go on
+                asyncio.run(go(answer))
+                self.assertIn(("/dev", "ProvisionDiscoveryRequest", ["/peer/tv", "pbc"]), d.calls)
+        finally:
+            p2pd.PD_WAIT_S = orig
 
     def test_no_common_channel_asks_again_on_any_channel(self):
         # Seen with a TV: our Wi-Fi's channel (5745 MHz) refused with status 7.

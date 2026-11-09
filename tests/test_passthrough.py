@@ -109,7 +109,7 @@ class TestController(unittest.TestCase):
             return h, pt, rec, proc, on
         h, pt, rec, proc, on = asyncio.run(go())
         self.assertEqual(on, ("on", True, 1920, "192.0.2.30"))
-        self.assertEqual(h.sent, [{"cmd": "tv_on", "name": "<tv>"}, {"cmd": "tv_off"}])
+        self.assertEqual(h.sent, [{"cmd": "tv_on", "name": "<tv>"}, {"cmd": "tv_ready"}, {"cmd": "tv_off"}])
         self.assertEqual(rec.calls, ["<tv>", None])                  # casts back on our screens
         self.assertTrue(proc.stopped)
         self.assertTrue(FakeSource.instances[0].torn_down)
@@ -132,7 +132,7 @@ class TestController(unittest.TestCase):
                 mod.RETRY_S = saved
         h, n = asyncio.run(go())
         self.assertEqual(n, 2)
-        self.assertEqual([m["cmd"] for m in h.sent], ["tv_on", "tv_on", "tv_off"])
+        self.assertEqual([m["cmd"] for m in h.sent], ["tv_on", "tv_ready", "tv_on", "tv_ready", "tv_off"])
 
     def test_find(self):
         async def go():

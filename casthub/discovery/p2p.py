@@ -51,12 +51,16 @@ WFD_SOURCE, WFD_PRIMARY_SINK, WFD_SECONDARY_SINK, WFD_DUAL_ROLE = 0, 1, 2, 3    
 SINK_TYPES = (WFD_PRIMARY_SINK, WFD_SECONDARY_SINK, WFD_DUAL_ROLE)
 
 
-def wfd_subelements(rtsp_port: int = 7236, available: bool = True, dual_role: bool = False) -> bytes:
+def wfd_subelements(rtsp_port: int = 7236, available: bool = True, dual_role: bool = False,
+                    source: bool = False) -> bytes:
     """WFD Device Information subelement, as wpa_supplicant's WFDIEs property expects (id, len, data).
     dual_role (passthrough, M10): we also send, so a TV takes us as its source while Win + K
-    still lists us as a display."""
+    still lists us as a display. source: only a source, as phones and PCs say while they join a
+    TV (a TV that saw us as dual-role joined our group and then waited, never connecting)."""
     flags = WFD_PRIMARY_SINK_AVAILABLE if available else WFD_PRIMARY_SINK_AVAILABLE & ~0x0030
-    if dual_role:
+    if source:
+        flags = (flags & ~0x0003) | WFD_SOURCE
+    elif dual_role:
         flags = (flags & ~0x0003) | WFD_DUAL_ROLE
     info = struct.pack(">HHH", flags, rtsp_port, WFD_MAX_THROUGHPUT_MBPS)
     return struct.pack(">BH", 0, len(info)) + info

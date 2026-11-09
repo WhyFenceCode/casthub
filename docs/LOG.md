@@ -438,3 +438,11 @@ heading for offices and lecture halls. Owner has a Miracast TV/projector; nothin
   Built in a throwaway Fedora container (`tools/build-nm.sh`, release `.casthub1`), installed
   by `tools/install-nm.sh` (snapshot first). No version lock, so a Fedora update wins; then
   casthub-p2p logs that NM is unpatched. Live test pending.
+- Live test 4, with the patched NetworkManager: the group stayed up. NM logged "device is
+  unmanaged; leaving the group to whoever started it", the TV joined (4-way handshake done)
+  and took 10.x.x.10 from our DHCP. Then nothing: the hub's source listened on TCP 7236 (zone
+  open), but the TV never connected; a 25 s capture on the group link saw zero packets from it.
+- Changes, as phones and PCs do when they join a TV: a push-button provision-discovery request
+  before the group negotiation (it is what makes a TV expect a session), and our WFD info says
+  "source" while joining instead of dual-role (dual-role again once the TV's session is up,
+  `tv_ready` from the hub, so Win + K lists us during passthrough). Tests added.
